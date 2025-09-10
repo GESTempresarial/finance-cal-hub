@@ -18,10 +18,12 @@ export interface Activity {
   title: string;
   description?: string;
   clientId: string;
-  assigneeId: string;
-  dueDate: Date;
-  estimatedMinutes: number;
-  actualMinutes?: number;
+  clientName?: string;
+  assignedTo: string;
+  assignedToName?: string;
+  date: Date;
+  estimatedDuration: number;
+  actualDuration?: number;
   status: ActivityStatus;
   isRecurring?: boolean;
   recurrenceType?: RecurrenceType;

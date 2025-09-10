@@ -22,8 +22,8 @@ export function ActivityCard({
   onStopTimer,
   isTimerActive 
 }: ActivityCardProps) {
-  const isOverdue = new Date(activity.dueDate) < new Date() && activity.status !== 'completed';
-  const isShortTask = activity.estimatedMinutes <= 30;
+  const isOverdue = new Date(activity.date) < new Date() && activity.status !== 'completed';
+  const isShortTask = activity.estimatedDuration <= 30;
   
   const handleStatusClick = () => {
     const statuses: Activity['status'][] = ['pending', 'doing', 'waiting-client', 'waiting-team', 'completed'];
@@ -82,9 +82,9 @@ export function ActivityCard({
               </Button>
             )}
             <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {activity.estimatedMinutes}min
-            </span>
+              <span className="text-xs text-muted-foreground">
+                {activity.estimatedDuration}min
+              </span>
           </div>
         </div>
 
@@ -113,9 +113,9 @@ export function ActivityCard({
             {STATUS_LABELS[activity.status]}
           </Badge>
           
-          {activity.actualMinutes && (
+          {activity.actualDuration && (
             <span className="text-xs text-muted-foreground">
-              Real: {activity.actualMinutes}min
+              Real: {activity.actualDuration}min
             </span>
           )}
         </div>

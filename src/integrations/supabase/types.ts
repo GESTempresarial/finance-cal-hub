@@ -14,7 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activities: {
+        Row: {
+          actual_duration: number | null
+          assigned_to: string
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          date: string
+          description: string | null
+          estimated_duration: number
+          id: string
+          is_recurring: boolean
+          recurrence_type: string | null
+          started_at: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          actual_duration?: number | null
+          assigned_to: string
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          date: string
+          description?: string | null
+          estimated_duration: number
+          id?: string
+          is_recurring?: boolean
+          recurrence_type?: string | null
+          started_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          actual_duration?: number | null
+          assigned_to?: string
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          date?: string
+          description?: string | null
+          estimated_duration?: number
+          id?: string
+          is_recurring?: boolean
+          recurrence_type?: string | null
+          started_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activities_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          color_index: number
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          color_index: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          color_index?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      users: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

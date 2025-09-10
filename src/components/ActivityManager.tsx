@@ -68,9 +68,11 @@ export function ActivityManager({
       title: formData.title,
       description: formData.description,
       clientId: formData.clientId,
-      assigneeId: formData.assigneeId,
-      dueDate: formData.dueDate,
-      estimatedMinutes: formData.estimatedMinutes,
+      assignedTo: formData.assigneeId,
+      assignedToName: currentUser.name,
+      clientName: clients.find(c => c.id === formData.clientId)?.name || '',
+      date: formData.dueDate,
+      estimatedDuration: formData.estimatedMinutes,
       status: 'pending',
     });
 
@@ -174,10 +176,10 @@ export function ActivityManager({
                     </p>
                   )}
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>📅 {format(new Date(activity.dueDate), 'dd/MM/yyyy', { locale: ptBR })}</span>
-                    <span>⏱️ {activity.estimatedMinutes} min</span>
-                    {activity.actualMinutes && (
-                      <span>✅ {activity.actualMinutes} min real</span>
+                    <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                    <span>⏱️ {activity.estimatedDuration} min</span>
+                    {activity.actualDuration && (
+                      <span>✅ {activity.actualDuration} min real</span>
                     )}
                   </div>
                 </div>

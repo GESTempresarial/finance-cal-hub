@@ -36,7 +36,7 @@ export function Calendar({
 
   const getActivitiesForDay = (day: Date) => {
     return activities.filter(activity => 
-      isSameDay(new Date(activity.dueDate), day)
+      isSameDay(new Date(activity.date), day)
     );
   };
 
