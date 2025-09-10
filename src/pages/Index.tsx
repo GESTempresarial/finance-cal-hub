@@ -1,13 +1,48 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState, useEffect } from 'react';
+import { User } from '@/types';
+import { UserLogin } from '@/components/UserLogin';
+import { MainLayout } from '@/components/MainLayout';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 const Index = () => {
+  const [users, setUsers] = useLocalStorage<User[]>('bpo-users', [
+    { id: '1', name: 'Flavio', createdAt: new Date() },
+    { id: '2', name: 'Eduardo', createdAt: new Date() }
+  ]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+  };
+
+  const handleCreateUser = (name: string) => {
+    const newUser: User = {
+      id: crypto.randomUUID(),
+      name,
+      createdAt: new Date(),
+    };
+    setUsers(prev => [...prev, newUser]);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+  };
+
+  if (!currentUser) {
+    return (
+      <UserLogin
+        users={users}
+        onLogin={handleLogin}
+        onCreateUser={handleCreateUser}
+      />
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <MainLayout
+      currentUser={currentUser}
+      onLogout={handleLogout}
+    />
   );
 };
 

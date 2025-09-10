@@ -8,35 +8,67 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 240 10% 98%;
+    --foreground: 240 10% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 240 10% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 20%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 20%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 221 83% 53%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+
+    /* Client Colors */
+    --client-1: 221 83% 53%;  /* Blue */
+    --client-2: 142 71% 45%;  /* Green */
+    --client-3: 262 83% 58%;  /* Purple */
+    --client-4: 25 95% 53%;   /* Orange */
+    --client-5: 346 84% 61%;  /* Pink */
+    --client-6: 198 93% 60%;  /* Cyan */
+    --client-7: 48 96% 53%;   /* Yellow */
+    --client-8: 14 91% 43%;   /* Red */
+    --client-9: 280 100% 70%; /* Magenta */
+    --client-10: 160 84% 39%; /* Teal */
+
+    /* Status Colors */
+    --status-pending: 45 93% 47%;     /* Yellow */
+    --status-doing: 221 83% 53%;      /* Blue */
+    --status-waiting-client: 25 95% 53%; /* Orange */
+    --status-waiting-team: 262 83% 58%;  /* Purple */
+    --status-completed: 142 71% 45%;     /* Green */
+
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(262 83% 58%));
+    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(240 5% 98%));
+    
+    /* Shadows */
+    --shadow-soft: 0 2px 8px -2px hsl(240 5% 15% / 0.1);
+    --shadow-medium: 0 4px 16px -4px hsl(240 5% 15% / 0.15);
+    --shadow-strong: 0 8px 32px -8px hsl(240 5% 15% / 0.2);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s ease-out;
 
     --sidebar-background: 0 0% 98%;
 
