@@ -1,10 +1,19 @@
+
 import { useState, useEffect } from 'react';
 import { User } from '@/types';
 import { UserLogin } from '@/components/UserLogin';
 import { MainLayout } from '@/components/MainLayout';
 import { supabase } from '@/integrations/supabase/client';
 
-const Index = () => {
+
+// Recebe hooks como props
+interface IndexProps {
+  activitiesHook: ReturnType<typeof import("@/hooks/useActivities").useActivities>;
+  clientsHook: ReturnType<typeof import("@/hooks/useClients").useClients>;
+  timersHook: ReturnType<typeof import("@/hooks/useTimers").useTimers>;
+}
+
+const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +96,9 @@ const Index = () => {
     <MainLayout
       currentUser={currentUser}
       onLogout={handleLogout}
+      activitiesHook={activitiesHook}
+      clientsHook={clientsHook}
+      timersHook={timersHook}
     />
   );
 };

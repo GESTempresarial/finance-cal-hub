@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import { Activity } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 
 export function useActivities() {
   const [activities, setActivities] = useState<Activity[]>([]);
+
+  const formatDateOnly = (d: Date) => format(d, 'yyyy-MM-dd');
+  const parseDateOnly = (s: string): Date => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  };
 
   useEffect(() => {
     fetchActivities();
@@ -38,7 +45,7 @@ export function useActivities() {
         clientName: item.clients?.name || '',
         assignedTo: item.assigned_to,
         assignedToName: item.users?.name || '',
-        date: new Date(item.date),
+        date: typeof item.date === 'string' ? parseDateOnly(item.date) : new Date(item.date),
         estimatedDuration: item.estimated_duration,
         actualDuration: item.actual_duration,
         status: item.status as Activity['status'],
@@ -65,7 +72,7 @@ export function useActivities() {
           description: activityData.description,
           client_id: activityData.clientId,
           assigned_to: activityData.assignedTo,
-          date: activityData.date.toISOString().split('T')[0],
+          date: formatDateOnly(activityData.date),
           estimated_duration: activityData.estimatedDuration,
           actual_duration: activityData.actualDuration,
           status: activityData.status,
@@ -87,7 +94,7 @@ export function useActivities() {
         clientName: activityData.clientName,
         assignedTo: data.assigned_to,
         assignedToName: activityData.assignedToName,
-        date: new Date(data.date),
+  date: typeof data.date === 'string' ? parseDateOnly(data.date) : new Date(data.date),
         estimatedDuration: data.estimated_duration,
         actualDuration: data.actual_duration,
         status: data.status as Activity['status'],
@@ -116,7 +123,7 @@ export function useActivities() {
           description: updates.description,
           client_id: updates.clientId,
           assigned_to: updates.assignedTo,
-          date: updates.date?.toISOString().split('T')[0],
+          date: updates.date ? formatDateOnly(updates.date) : undefined,
           estimated_duration: updates.estimatedDuration,
           actual_duration: updates.actualDuration,
           status: updates.status,

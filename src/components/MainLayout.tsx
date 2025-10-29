@@ -11,36 +11,63 @@ import { useActivities } from '@/hooks/useActivities';
 import { useClients } from '@/hooks/useClients';
 import { useTimers } from '@/hooks/useTimers';
 
+
 interface MainLayoutProps {
   currentUser: User;
   onLogout: () => void;
+  activitiesHook: ReturnType<typeof import("@/hooks/useActivities").useActivities>;
+  clientsHook: ReturnType<typeof import("@/hooks/useClients").useClients>;
+  timersHook: ReturnType<typeof import("@/hooks/useTimers").useTimers>;
 }
 
-export function MainLayout({ currentUser, onLogout }: MainLayoutProps) {
+
+export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook, timersHook }: MainLayoutProps) {
   const [activeTab, setActiveTab] = useState('calendar');
-  
+  const [showCreateActivity, setShowCreateActivity] = useState(false);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [createDate, setCreateDate] = useState<Date | null>(null);
+
+  // Função para abrir o formulário e trocar para a aba de atividades
+  const handleOpenCreateActivity = () => {
+    setActiveTab('activities');
+    setShowCreateActivity(true);
+  };
+
+  const handleCalendarActivityClick = (id: string) => {
+    setSelectedActivityId(id);
+    setActiveTab('activities');
+  };
+
+  const handleDayCreate = (date: Date) => {
+    // Abrir aba de atividades com o formulário de criação
+    setActiveTab('activities');
+    setShowCreateActivity(true);
+  setCreateDate(date);
+    // Poderíamos armazenar data pré-selecionada em estado global/contexto; por ora ActivityManager já inicia com hoje.
+    // Extensão futura: passar via algum store ou prop.
+  };
+
+  // Hooks vindos do App
   const {
     activities,
     createActivity,
     updateActivity,
     deleteActivity,
     updateActivityStatus
-  } = useActivities();
+  } = activitiesHook;
 
   const {
     clients,
     createClient,
     updateClient,
     deleteClient
-  } = useClients();
+  } = clientsHook;
 
   const {
     activeTimers,
     startTimer,
     stopTimer
-  } = useTimers();
-
-  const [showCreateActivity, setShowCreateActivity] = useState(false);
+  } = timersHook;
 
   return (
     <div className="min-h-screen bg-background">
@@ -52,7 +79,7 @@ export function MainLayout({ currentUser, onLogout }: MainLayoutProps) {
               <CalendarIcon className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Sistema BPO Financeiro</h1>
+              <h1 className="text-xl font-bold">Gestão de Atividades - GEST Empresarial</h1>
               <p className="text-sm text-muted-foreground">
                 Bem-vindo, {currentUser.name}
               </p>
@@ -69,12 +96,12 @@ export function MainLayout({ currentUser, onLogout }: MainLayoutProps) {
       {/* Main Content */}
       <div className="flex h-[calc(100vh-73px)]">
         {/* Sidebar */}
-        <aside className="w-80 border-r bg-card p-4 overflow-y-auto">
+  <aside className="w-72 border-r bg-card p-4 overflow-y-auto">
           <ClientLegend clients={clients} />
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-hidden">
+  <main className="flex-1 overflow-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <TabsList className="grid w-full grid-cols-3 mx-6 mt-6">
               <TabsTrigger value="calendar" className="gap-2">
@@ -101,7 +128,10 @@ export function MainLayout({ currentUser, onLogout }: MainLayoutProps) {
                   onStartTimer={startTimer}
                   onStopTimer={stopTimer}
                   activeTimers={activeTimers}
-                  onCreateActivity={() => setShowCreateActivity(true)}
+                  onCreateActivity={handleOpenCreateActivity}
+                  onUpdateActivity={updateActivity}
+                  onActivityClick={handleCalendarActivityClick}
+                  onDayCreate={handleDayCreate}
                 />
               </TabsContent>
 
@@ -116,6 +146,12 @@ export function MainLayout({ currentUser, onLogout }: MainLayoutProps) {
                   onStatusChange={updateActivityStatus}
                   showCreateForm={showCreateActivity}
                   onCloseCreateForm={() => setShowCreateActivity(false)}
+                  onOpenCreateForm={() => setShowCreateActivity(true)}
+                  createDate={createDate}
+                  onConsumeCreateDate={() => setCreateDate(null)}
+                  selectedActivityId={selectedActivityId}
+                  onClearSelectedActivity={() => setSelectedActivityId(null)}
+                  onSelectActivity={(id) => setSelectedActivityId(id)}
                 />
               </TabsContent>
 
