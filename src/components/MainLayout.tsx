@@ -6,10 +6,11 @@ import { ClientManager } from './ClientManager';
 import { ClientLegend } from './ClientLegend';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, Calendar as CalendarIcon, Activity, Users } from 'lucide-react';
+import { LogOut, Calendar as CalendarIcon, Activity, Users, Menu, X } from 'lucide-react';
 import { useActivities } from '@/hooks/useActivities';
 import { useClients } from '@/hooks/useClients';
 import { useTimers } from '@/hooks/useTimers';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 
 interface MainLayoutProps {
@@ -27,6 +28,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [createDate, setCreateDate] = useState<Date | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Função para abrir o formulário e trocar para a aba de atividades
   const handleOpenCreateActivity = () => {
@@ -67,6 +69,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
   const {
     activeTimers,
     runningActivityId,
+    timerStateVersion,
     startTimer,
     pauseTimer,
     stopTimer,
@@ -80,51 +83,66 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
       {/* Header */}
       <header className="border-b bg-card shadow-soft">
         <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/60 rounded-xl flex items-center justify-center">
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Botão de menu mobile */}
+            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-4">
+                <ClientLegend clients={clients} />
+              </SheetContent>
+            </Sheet>
+            
+            <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/60 rounded-xl flex items-center justify-center shrink-0">
               <CalendarIcon className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold">Gestão de Atividades - GEST Empresarial</h1>
-              <p className="text-sm text-muted-foreground">
-                Bem-vindo, {currentUser.name}
+            <div className="min-w-0">
+              <h1 className="text-base md:text-xl font-bold truncate">Gestão de Atividades</h1>
+              <p className="text-xs md:text-sm text-muted-foreground truncate">
+                {currentUser.name}
               </p>
             </div>
           </div>
           
-          <Button onClick={onLogout} variant="outline" className="gap-2">
+          <Button onClick={onLogout} variant="outline" size="sm" className="gap-2 shrink-0">
             <LogOut className="w-4 h-4" />
-            Sair
+            <span className="hidden sm:inline">Sair</span>
           </Button>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar */}
-  <aside className="w-72 border-r bg-card p-4 overflow-y-auto">
+        {/* Sidebar - Desktop only */}
+        <aside className="hidden md:block w-72 border-r bg-card p-4 overflow-y-auto">
           <ClientLegend clients={clients} />
         </aside>
 
         {/* Content Area */}
-  <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3 mx-6 mt-6">
-              <TabsTrigger value="calendar" className="gap-2">
-                <CalendarIcon className="w-4 h-4" />
-                Calendário
+            <TabsList className="grid w-full grid-cols-3 mx-2 md:mx-6 mt-2 md:mt-6">
+              <TabsTrigger value="calendar" className="gap-1 md:gap-2 text-xs md:text-sm">
+                <CalendarIcon className="w-3 h-3 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Calendário</span>
+                <span className="sm:hidden">Cal</span>
               </TabsTrigger>
-              <TabsTrigger value="activities" className="gap-2">
-                <Activity className="w-4 h-4" />
-                Atividades
+              <TabsTrigger value="activities" className="gap-1 md:gap-2 text-xs md:text-sm">
+                <Activity className="w-3 h-3 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Atividades</span>
+                <span className="sm:hidden">Atv</span>
               </TabsTrigger>
-              <TabsTrigger value="clients" className="gap-2">
-                <Users className="w-4 h-4" />
-                Clientes
+              <TabsTrigger value="clients" className="gap-1 md:gap-2 text-xs md:text-sm">
+                <Users className="w-3 h-3 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">Clientes</span>
+                <span className="sm:hidden">Cli</span>
               </TabsTrigger>
             </TabsList>
 
-            <div className="flex-1 mt-6">
+            <div className="flex-1 mt-2 md:mt-6">
               <TabsContent value="calendar" className="h-full m-0">
                 <Calendar
                   activities={activities}
@@ -142,7 +160,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                 />
               </TabsContent>
 
-              <TabsContent value="activities" className="h-full m-0 p-6">
+              <TabsContent value="activities" className="h-full m-0 p-2 md:p-6">
                 <ActivityManager
                   activities={activities}
                   clients={clients}
@@ -163,6 +181,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                   timersHook={{
                     activeTimers,
                     runningActivityId,
+                    timerStateVersion,
                     startTimer,
                     pauseTimer,
                     stopTimer,
@@ -173,7 +192,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                 />
               </TabsContent>
 
-              <TabsContent value="clients" className="h-full m-0 p-6">
+              <TabsContent value="clients" className="h-full m-0 p-2 md:p-6">
                 <ClientManager
                   clients={clients}
                   onCreateClient={createClient}

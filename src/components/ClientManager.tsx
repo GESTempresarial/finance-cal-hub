@@ -97,37 +97,37 @@ export function ClientManager({
   const dialogTitle = editingClient ? 'Editar Cliente' : 'Novo Cliente';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
         <div>
-          <h2 className="text-2xl font-bold">Gerenciar Clientes</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-xl md:text-2xl font-bold">Gerenciar Clientes</h2>
+          <p className="text-sm text-muted-foreground">
             {clients.filter(c => c.isActive).length} clientes ativos
           </p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)}>
+        <Button onClick={() => setShowCreateForm(true)} className="w-full sm:w-auto" size="sm">
           <Plus className="w-4 h-4 mr-2" />
           Novo Cliente
         </Button>
       </div>
 
       {/* Clients Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         {clients.map((client) => (
-          <Card key={client.id} className="p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1">
+          <Card key={client.id} className="p-3 md:p-4">
+            <div className="flex items-start justify-between gap-2 md:gap-4">
+              <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
                 <div 
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
                 >
-                  <Building className="w-6 h-6 text-white" />
+                  <Building className="w-5 h-5 md:w-6 md:h-6 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold truncate">{client.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={client.isActive ? "default" : "secondary"}>
+                  <h3 className="font-semibold text-sm md:text-base truncate">{client.name}</h3>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant={client.isActive ? "default" : "secondary"} className="text-xs">
                       {client.isActive ? 'Ativo' : 'Inativo'}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
@@ -135,28 +135,29 @@ export function ClientManager({
                     </span>
                   </div>
                   {client.notes && (
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                    <p className="text-xs md:text-sm text-muted-foreground mt-2 line-clamp-2">
                       {client.notes}
                     </p>
                   )}
                 </div>
               </div>
               
-              <div className="flex gap-1">
+              <div className="flex flex-col sm:flex-row gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => handleEditClient(client)}
+                  className="h-8 w-8 p-0"
                 >
-                  <Edit className="w-4 h-4" />
+                  <Edit className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => onDeleteClient(client.id)}
-                  className="text-destructive hover:text-destructive"
+                  className="text-destructive hover:text-destructive h-8 w-8 p-0"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
               </div>
             </div>
@@ -166,7 +167,7 @@ export function ClientManager({
 
       {/* Create/Edit Client Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={closeDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
