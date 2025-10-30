@@ -36,6 +36,7 @@ interface ActivityManagerProps {
   timersHook?: {
     activeTimers: Map<string, number>;
     runningActivityId: string | null;
+    timerStateVersion: number;
     startTimer: (activityId: string) => void;
     pauseTimer: (activityId: string) => void;
     stopTimer: (activityId: string) => void;
@@ -68,12 +69,22 @@ export function ActivityManager({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [showRecurring, setShowRecurring] = useState(false); // Estado para mostrar/ocultar recorrentes
+  const [showPending, setShowPending] = useState(false); // Estado para mostrar/ocultar pendentes
+  const [showCompleted, setShowCompleted] = useState(false); // Estado para mostrar/ocultar concluídas
   
   // Refs para PiP
   const pipCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipAnimationRef = useRef<number>();
   const pipActivityIdRef = useRef<string | null>(null);
+  const pipTimerRef = useRef<number>(0); // Ref para armazenar o tempo do timer no PiP
+  
+  // Força re-render quando o estado do timer muda (start/pause)
+  // Isso garante que os botões de Pausar/Retomar sejam atualizados
+  const timerVersion = timersHook?.timerStateVersion || 0;
+  useEffect(() => {
+    // Este efeito não faz nada, mas dispara re-render quando timerVersion muda
+  }, [timerVersion]);
   
   // Usar timer do hook global ou fallback para timer local
   const activeTimers = timersHook?.activeTimers || new Map<string, number>();
@@ -110,8 +121,8 @@ export function ActivityManager({
       // Criar canvas e video se não existirem
       if (!pipCanvasRef.current) {
         pipCanvasRef.current = document.createElement('canvas');
-        pipCanvasRef.current.width = 400;
-        pipCanvasRef.current.height = 240;
+        pipCanvasRef.current.width = 600; // Aumentado para comportar duas colunas
+        pipCanvasRef.current.height = 300;
       }
       
       if (!pipVideoRef.current) {
@@ -130,8 +141,18 @@ export function ActivityManager({
       const drawTimer = () => {
         if (pipActivityIdRef.current !== activityId) return;
         
-        const currentSeconds = activeTimers.get(activityId) || 0;
-        const currentIsRunning = isTimerRunning(activityId);
+        // Buscar valores atualizados diretamente do hook a cada frame
+        let currentSeconds = 0;
+        let currentIsRunning = false;
+        
+        if (timersHook) {
+          currentSeconds = timersHook.getTimerSeconds(activityId);
+          currentIsRunning = timersHook.isTimerRunning(activityId);
+          pipTimerRef.current = currentSeconds; // Atualizar o ref
+        }
+
+        // Limpar canvas completamente
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Fundo gradiente
         const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
@@ -140,45 +161,145 @@ export function ActivityManager({
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Linha divisória vertical entre as duas colunas
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 20);
+        ctx.lineTo(canvas.width / 2, canvas.height - 20);
+        ctx.stroke();
+
+        // ====== COLUNA ESQUERDA - INFORMAÇÕES PRINCIPAIS ======
+        const leftCenter = canvas.width / 4;
+
         // Nome da atividade
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
-        const title = activity.title.length > 30 ? activity.title.substring(0, 30) + '...' : activity.title;
-        ctx.fillText(title, canvas.width / 2, 40);
+        const title = activity.title.length > 20 ? activity.title.substring(0, 20) + '...' : activity.title;
+        ctx.fillText(title, leftCenter, 50);
 
         // Cliente
         ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.fillText(client.name, canvas.width / 2, 65);
+        ctx.fillText(client.name, leftCenter, 75);
 
-        // Timer
-        ctx.font = 'bold 64px monospace';
+        // Timer grande
+        ctx.font = 'bold 72px monospace';
         ctx.fillStyle = 'white';
-        ctx.textAlign = 'center';
-        const timerText = formatTimer(currentSeconds);
-        ctx.fillText(timerText, canvas.width / 2, 140);
+        ctx.fillText(timersHook?.formatTimer(currentSeconds) || '0:00', leftCenter, 160);
 
-        // Label
+        // Label do timer
         ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillText('TEMPO DECORRIDO', canvas.width / 2, 165);
+        ctx.fillText('TEMPO DECORRIDO', leftCenter, 185);
 
-        // Status
-        const statusLabel = currentIsRunning ? '▶ RODANDO' : '⏸ PAUSADO';
+        // Status com ícone
+        const statusLabels: Record<Activity['status'], string> = {
+          'pending': '⏸ PENDENTE',
+          'doing': currentIsRunning ? '▶ FAZENDO' : '⏸ PAUSADO',
+          'completed': '✅ CONCLUÍDO',
+          'waiting-client': '👤 AGUARDANDO CLIENTE',
+          'waiting-team': '👥 AGUARDANDO EQUIPE'
+        };
+        
+        const statusColors: Record<Activity['status'], string> = {
+          'pending': '#fbbf24',
+          'doing': currentIsRunning ? '#22c55e' : '#fbbf24',
+          'completed': '#22c55e',
+          'waiting-client': '#f59e0b',
+          'waiting-team': '#3b82f6'
+        };
+
+        const currentStatus = activity.status;
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = statusColors[currentStatus] || '#fbbf24';
+        ctx.fillText(statusLabels[currentStatus] || 'DESCONHECIDO', leftCenter, 220);
+
+        // ====== COLUNA DIREITA - ATALHOS ======
+        const rightStart = canvas.width / 2 + 30;
+        const rightCenter = canvas.width / 2 + (canvas.width / 4);
+
+        // Título da seção de atalhos
         ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.fillStyle = currentIsRunning ? '#22c55e' : '#fbbf24';
-        ctx.fillText(statusLabel, canvas.width / 2, 195);
-
-        // Instrução com atalhos
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        ctx.textAlign = 'left';
-        ctx.fillText('Alt + P: Play/Pause', 10, 210);
-        ctx.fillText('Alt + F: Finalizar', 10, 225);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
         ctx.textAlign = 'center';
+        ctx.fillText('⌨️ ATALHOS DE TECLADO', rightCenter, 40);
+
+        // Linha separadora horizontal
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(rightStart, 50);
+        ctx.lineTo(canvas.width - 30, 50);
+        ctx.stroke();
+
+        // Atalhos - alinhados à esquerda
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.textAlign = 'left';
+        
+        let yPos = 80;
+        const lineHeight = 30;
+
+        // Play/Pause
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(rightStart, yPos - 12, 4, 16);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText('Alt + P', rightStart + 10, yPos);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Play/Pausar', rightStart + 75, yPos);
+        
+        // Finalizar
+        yPos += lineHeight;
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(rightStart, yPos - 12, 4, 16);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText('Alt + F', rightStart + 10, yPos);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Finalizar', rightStart + 75, yPos);
+
+        // Aguardar Cliente
+        yPos += lineHeight;
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(rightStart, yPos - 12, 4, 16);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText('Alt + C', rightStart + 10, yPos);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Ag. Cliente', rightStart + 75, yPos);
+
+        // Aguardar Equipe
+        yPos += lineHeight;
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(rightStart, yPos - 12, 4, 16);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText('Alt + T', rightStart + 10, yPos);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Ag. Equipe', rightStart + 75, yPos);
+
+        // Editar
+        yPos += lineHeight;
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillRect(rightStart, yPos - 12, 4, 16);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText('Alt + E', rightStart + 10, yPos);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText('Editar', rightStart + 75, yPos);
+
+        // Rodapé com dica
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fillText('Alt + C: Cliente | Alt + T: Equipe | Alt + E: Editar', canvas.width / 2, 225);
+        ctx.textAlign = 'center';
+        ctx.fillText('Mantenha o navegador em foco para usar os atalhos', canvas.width / 2, canvas.height - 15);
 
         // Continuar animação
         pipAnimationRef.current = requestAnimationFrame(drawTimer);
@@ -215,6 +336,7 @@ export function ActivityManager({
   // Atalhos de teclado globais para controle do timer
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      // Se não tem PiP ativo, não fazer nada
       if (!pipActivityIdRef.current) return;
       
       const activityId = pipActivityIdRef.current;
@@ -225,12 +347,18 @@ export function ActivityManager({
       if (e.altKey && e.code === 'KeyP' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         if (activity.status === 'pending') {
+          // Se está pendente, iniciar
           startActivityTimer(activityId);
         } else if (activity.status === 'doing') {
-          if (isTimerRunning(activityId)) {
+          // Se está fazendo, verificar se timer está rodando
+          if (timersHook?.isTimerRunning(activityId)) {
+            // Se está rodando, pausar
             pauseActivityTimer(activityId);
           } else {
-            startActivityTimer(activityId);
+            // Se está pausado, retomar
+            if (timersHook) {
+              timersHook.startTimer(activityId);
+            }
           }
         }
       }
@@ -260,9 +388,10 @@ export function ActivityManager({
       }
     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [activities]);
+    // Adicionar listener no documento para capturar eventos mesmo sem foco
+    document.addEventListener('keydown', handleKeyPress, true);
+    return () => document.removeEventListener('keydown', handleKeyPress, true);
+  }, [activities, timersHook]);
   
   // Mudar status e parar timer
   const changeActivityStatus = (activityId: string, newStatus: Activity['status']) => {
@@ -349,9 +478,10 @@ export function ActivityManager({
   // Separar hoje e outras
   const today = new Date();
   today.setHours(0,0,0,0);
-  const { todayActivities, otherActivities, recurringActivities } = useMemo(() => {
+  const { todayActivities, pendingActivities, completedActivities, recurringActivities } = useMemo(() => {
     const todayList: Activity[] = [];
-    const others: Activity[] = [];
+    const pending: Activity[] = [];
+    const completed: Activity[] = [];
     const recurring: Activity[] = [];
     
     filteredActivities.forEach(a => {
@@ -398,10 +528,19 @@ export function ActivityManager({
       }
       
       // Não recorrente
-      if (baseDate.getTime() === today.getTime()) todayList.push(a); else others.push(a);
+      if (baseDate.getTime() === today.getTime()) {
+        todayList.push(a);
+      } else {
+        // Separar em pendentes e concluídas
+        if (a.status === 'completed') {
+          completed.push(a);
+        } else {
+          pending.push(a);
+        }
+      }
     });
     
-    return { todayActivities: todayList, otherActivities: others, recurringActivities: recurring };
+    return { todayActivities: todayList, pendingActivities: pending, completedActivities: completed, recurringActivities: recurring };
   }, [filteredActivities]);
 
   // Scroll até atividade selecionada ao vir do calendário
@@ -693,7 +832,11 @@ export function ActivityManager({
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => startActivityTimer(activity.id)}
+                                onClick={() => {
+                                  if (timersHook) {
+                                    timersHook.startTimer(activity.id);
+                                  }
+                                }}
                                 className="gap-1"
                               >
                                 <Play className="w-3 h-3" />
@@ -784,11 +927,15 @@ export function ActivityManager({
                             <Button
                               size="sm"
                               onClick={() => {
+                                // Sempre mudar o status de volta para 'doing' ao retomar
                                 if (isRecurringOccurrence) {
                                   onUpdateActivity(activity.id, { status: 'doing' });
-                                  startActivityTimer(activity.id);
                                 } else {
-                                  startActivityTimer(activity.id);
+                                  onStatusChange(activity.id, 'doing');
+                                }
+                                // Iniciar o timer
+                                if (timersHook) {
+                                  timersHook.startTimer(activity.id);
                                 }
                               }}
                               className="gap-1"
@@ -910,71 +1057,65 @@ export function ActivityManager({
         {/* Divisor */}
         <div className="h-px bg-border" />
 
-        {/* Outras */}
+        {/* Atividades Pendentes */}
         <div>
-          <h3 className="text-sm font-semibold text-muted-foreground mb-2">Outras atividades</h3>
-          <div className="grid gap-4">
-            {otherActivities.map((activity) => {
-              const client = getClientById(activity.clientId);
-              if (!client) return null;
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Atividades Pendentes ({pendingActivities.length})
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPending(!showPending)}
+              className="h-8"
+            >
+              {showPending ? '▼ Ocultar' : '▶ Mostrar'}
+            </Button>
+          </div>
+          
+          {showPending && (
+            <div className="grid gap-4">
+              {pendingActivities.map((activity) => {
+                const client = getClientById(activity.clientId);
+                if (!client) return null;
 
-              return (
-                <Card 
-                  key={activity.id} 
-                  className="p-4 transition border-l-4" 
-                  style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold">{activity.title}</h3>
-                          <div 
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
-                          />
-                          <span className="text-sm text-muted-foreground">
-                            {client.name}
-                          </span>
+                return (
+                  <Card 
+                    key={activity.id} 
+                    className="p-4 transition border-l-4" 
+                    style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold">{activity.title}</h3>
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {client.name}
+                            </span>
+                            <Badge variant="secondary" className="text-xs ml-auto">
+                              {STATUS_LABELS[activity.status]}
+                            </Badge>
+                          </div>
+                          {activity.description && (
+                            <p className="text-sm text-muted-foreground">
+                              {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
+                            </p>
+                          )}
                         </div>
-                        {activity.description && (
-                          <p className="text-sm text-muted-foreground">
-                            {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between gap-4 pt-2 border-t">
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
-                        <span>⏱️ {activity.estimatedDuration} min estimado</span>
-                        {activity.status === 'completed' && activity.actualDuration && (
-                          <span className="text-green-600 font-medium">
-                            ✅ {activity.actualDuration} min realizado
-                          </span>
-                        )}
                       </div>
                       
-                      <div className="flex items-center gap-2">
-                        {activity.status === 'completed' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => changeActivityStatus(activity.id, 'pending')}
-                            className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
-                            title="Reverter conclusão"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                            Reabrir
-                          </Button>
-                        ) : (
-                          <Badge variant="secondary" className="text-xs">
-                            {STATUS_LABELS[activity.status]}
-                          </Badge>
-                        )}
+                      <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                          <span>⏱️ {activity.estimatedDuration} min estimado</span>
+                        </div>
                         
-                        <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                        <div className="flex items-center gap-1">
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1001,14 +1142,130 @@ export function ActivityManager({
                         </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
-              );
-            })}
-            {otherActivities.length === 0 && (
-              <p className="text-sm text-muted-foreground">Sem outras atividades.</p>
-            )}
+                  </Card>
+                );
+              })}
+              {pendingActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground">Sem atividades pendentes.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divisor */}
+        <div className="h-px bg-border" />
+
+        {/* Atividades Concluídas */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Atividades Concluídas ({completedActivities.length})
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCompleted(!showCompleted)}
+              className="h-8"
+            >
+              {showCompleted ? '▼ Ocultar' : '▶ Mostrar'}
+            </Button>
           </div>
+          
+          {showCompleted && (
+            <div className="grid gap-4">
+              {completedActivities.map((activity) => {
+                const client = getClientById(activity.clientId);
+                if (!client) return null;
+
+                return (
+                  <Card 
+                    key={activity.id} 
+                    className="p-4 transition border-l-4" 
+                    style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold">{activity.title}</h3>
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {client.name}
+                            </span>
+                            <Badge variant="secondary" className="text-xs ml-auto">
+                              ✅ {STATUS_LABELS[activity.status]}
+                            </Badge>
+                          </div>
+                          {activity.description && (
+                            <p className="text-sm text-muted-foreground">
+                              {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                          <span>⏱️ {activity.estimatedDuration} min estimado</span>
+                          {activity.actualDuration && (
+                            <span className="text-green-600 font-medium">
+                              ✅ {activity.actualDuration} min realizado
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => changeActivityStatus(activity.id, 'pending')}
+                            className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
+                            title="Reverter conclusão"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Reabrir
+                          </Button>
+                          
+                          <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => onSelectActivity?.(activity.id)}
+                              className="gap-1 h-8 px-2"
+                              title="Editar atividade"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm('Deseja realmente excluir esta atividade?')) {
+                                  onDeleteActivity(activity.id);
+                                }
+                              }}
+                              className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                              title="Excluir atividade"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+              {completedActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground">Sem atividades concluídas.</p>
+              )}
+            </div>
+          )}
         </div>
         
         {/* Divisor */}
