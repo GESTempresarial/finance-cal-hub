@@ -8,17 +8,19 @@ import { Plus, Users } from 'lucide-react';
 interface UserLoginProps {
   users: User[];
   onLogin: (user: User) => void;
-  onCreateUser: (name: string) => void;
+  onCreateUser: (name: string, phone: string) => void;
 }
 
 export function UserLogin({ users, onLogin, onCreateUser }: UserLoginProps) {
   const [newUserName, setNewUserName] = useState('');
+  const [newUserPhone, setNewUserPhone] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const handleCreateUser = () => {
-    if (newUserName.trim()) {
-      onCreateUser(newUserName.trim());
+    if (newUserName.trim() && newUserPhone.trim()) {
+      onCreateUser(newUserName.trim(), newUserPhone.trim());
       setNewUserName('');
+      setNewUserPhone('');
       setShowCreateForm(false);
     }
   };
@@ -69,8 +71,13 @@ export function UserLogin({ users, onLogin, onCreateUser }: UserLoginProps) {
                 placeholder="Nome do usuário"
                 value={newUserName}
                 onChange={(e) => setNewUserName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleCreateUser()}
                 autoFocus
+              />
+              <Input
+                placeholder="Telefone (ex: +5511999999999)"
+                value={newUserPhone}
+                onChange={(e) => setNewUserPhone(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleCreateUser()}
               />
               <div className="flex gap-2">
                 <Button onClick={handleCreateUser} className="flex-1">
@@ -80,6 +87,7 @@ export function UserLogin({ users, onLogin, onCreateUser }: UserLoginProps) {
                   onClick={() => {
                     setShowCreateForm(false);
                     setNewUserName('');
+                    setNewUserPhone('');
                   }}
                   variant="outline"
                   className="flex-1"

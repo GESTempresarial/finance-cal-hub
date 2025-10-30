@@ -33,6 +33,7 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
       const formattedUsers = (data || []).map(user => ({
         id: user.id,
         name: user.name,
+        phone: user.phone,
         createdAt: new Date(user.created_at)
       }));
       setUsers(formattedUsers);
@@ -47,11 +48,11 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     setCurrentUser(user);
   };
 
-  const handleCreateUser = async (name: string) => {
+  const handleCreateUser = async (name: string, phone: string) => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .insert([{ name }])
+        .insert([{ name, phone }])
         .select()
         .single();
       
@@ -59,6 +60,7 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
       const newUser = {
         id: data.id,
         name: data.name,
+        phone: data.phone,
         createdAt: new Date(data.created_at)
       };
       setUsers(prev => [...prev, newUser]);
