@@ -10,15 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Plus, Calendar as CalendarIcon, Filter, Search } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Filter, Search, Play, Pause, CheckCircle, Clock, Users, UserX, Edit, Trash2, RotateCcw, Monitor } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { fireConfetti } from '@/lib/confetti';
 
 interface ActivityManagerProps {
   activities: Activity[];
   clients: Client[];
   currentUser: User;
+  users: User[];
   onCreateActivity: (activity: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateActivity: (id: string, updates: Partial<Activity>) => void;
   onDeleteActivity: (id: string) => void;
@@ -31,12 +33,23 @@ interface ActivityManagerProps {
   createDate?: Date | null;
   onConsumeCreateDate?: () => void;
   onSelectActivity?: (id: string) => void;
+  timersHook?: {
+    activeTimers: Map<string, number>;
+    runningActivityId: string | null;
+    startTimer: (activityId: string) => void;
+    pauseTimer: (activityId: string) => void;
+    stopTimer: (activityId: string) => void;
+    getTimerSeconds: (activityId: string) => number;
+    isTimerRunning: (activityId: string) => boolean;
+    formatTimer: (seconds: number) => string;
+  };
 }
 
 export function ActivityManager({
   activities,
   clients,
   currentUser,
+  users,
   onCreateActivity,
   onUpdateActivity,
   onDeleteActivity,
@@ -49,10 +62,231 @@ export function ActivityManager({
   createDate,
   onConsumeCreateDate,
   onSelectActivity,
+  timersHook,
 }: ActivityManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('all');
+  const [showRecurring, setShowRecurring] = useState(false); // Estado para mostrar/ocultar recorrentes
+  
+  // Refs para PiP
+  const pipCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipAnimationRef = useRef<number>();
+  const pipActivityIdRef = useRef<string | null>(null);
+  
+  // Usar timer do hook global ou fallback para timer local
+  const activeTimers = timersHook?.activeTimers || new Map<string, number>();
+  const startActivityTimer = (activityId: string) => {
+    onStatusChange(activityId, 'doing');
+    if (timersHook) {
+      timersHook.startTimer(activityId);
+    }
+  };
+  
+  const pauseActivityTimer = (activityId: string) => {
+    if (timersHook) {
+      timersHook.pauseTimer(activityId);
+    }
+  };
+  
+  const isTimerRunning = (activityId: string): boolean => {
+    return timersHook?.isTimerRunning(activityId) || false;
+  };
+  
+  const formatTimer = (seconds: number): string => {
+    return timersHook?.formatTimer(seconds) || '0:00';
+  };
+  
+  // Abrir Picture-in-Picture diretamente
+  const openPictureInPicture = async (activityId: string) => {
+    const activity = activities.find(a => a.id === activityId);
+    if (!activity) return;
+    
+    const client = clients.find(c => c.id === activity.clientId);
+    if (!client) return;
+
+    try {
+      // Criar canvas e video se não existirem
+      if (!pipCanvasRef.current) {
+        pipCanvasRef.current = document.createElement('canvas');
+        pipCanvasRef.current.width = 400;
+        pipCanvasRef.current.height = 240;
+      }
+      
+      if (!pipVideoRef.current) {
+        pipVideoRef.current = document.createElement('video');
+        pipVideoRef.current.muted = true;
+      }
+
+      const canvas = pipCanvasRef.current;
+      const video = pipVideoRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      pipActivityIdRef.current = activityId;
+
+      // Função para desenhar no canvas
+      const drawTimer = () => {
+        if (pipActivityIdRef.current !== activityId) return;
+        
+        const currentSeconds = activeTimers.get(activityId) || 0;
+        const currentIsRunning = isTimerRunning(activityId);
+
+        // Fundo gradiente
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, '#667eea');
+        gradient.addColorStop(1, '#764ba2');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Nome da atividade
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        const title = activity.title.length > 30 ? activity.title.substring(0, 30) + '...' : activity.title;
+        ctx.fillText(title, canvas.width / 2, 40);
+
+        // Cliente
+        ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillText(client.name, canvas.width / 2, 65);
+
+        // Timer
+        ctx.font = 'bold 64px monospace';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        const timerText = formatTimer(currentSeconds);
+        ctx.fillText(timerText, canvas.width / 2, 140);
+
+        // Label
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText('TEMPO DECORRIDO', canvas.width / 2, 165);
+
+        // Status
+        const statusLabel = currentIsRunning ? '▶ RODANDO' : '⏸ PAUSADO';
+        ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = currentIsRunning ? '#22c55e' : '#fbbf24';
+        ctx.fillText(statusLabel, canvas.width / 2, 195);
+
+        // Instrução com atalhos
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.textAlign = 'left';
+        ctx.fillText('Alt + P: Play/Pause', 10, 210);
+        ctx.fillText('Alt + F: Finalizar', 10, 225);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillText('Alt + C: Cliente | Alt + T: Equipe | Alt + E: Editar', canvas.width / 2, 225);
+
+        // Continuar animação
+        pipAnimationRef.current = requestAnimationFrame(drawTimer);
+      };
+
+      // Desenhar inicialmente
+      drawTimer();
+
+      // Capturar stream do canvas
+      const stream = canvas.captureStream(30);
+      video.srcObject = stream;
+      await video.play();
+
+      // Ativar PiP
+      if (document.pictureInPictureEnabled) {
+        await video.requestPictureInPicture();
+
+        // Limpar quando sair do PiP
+        video.addEventListener('leavepictureinpicture', () => {
+          if (pipAnimationRef.current) {
+            cancelAnimationFrame(pipAnimationRef.current);
+          }
+          pipActivityIdRef.current = null;
+        }, { once: true });
+      } else {
+        alert('Picture-in-Picture não é suportado neste navegador.');
+      }
+    } catch (error) {
+      console.error('Erro ao ativar Picture-in-Picture:', error);
+      alert('Erro ao ativar Picture-in-Picture. Certifique-se de que seu navegador suporta esta funcionalidade.');
+    }
+  };
+  
+  // Atalhos de teclado globais para controle do timer
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (!pipActivityIdRef.current) return;
+      
+      const activityId = pipActivityIdRef.current;
+      const activity = activities.find(a => a.id === activityId);
+      if (!activity) return;
+
+      // Alt + P: Play/Pausar
+      if (e.altKey && e.code === 'KeyP' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (activity.status === 'pending') {
+          startActivityTimer(activityId);
+        } else if (activity.status === 'doing') {
+          if (isTimerRunning(activityId)) {
+            pauseActivityTimer(activityId);
+          } else {
+            startActivityTimer(activityId);
+          }
+        }
+      }
+      
+      // Alt + F: Finalizar/Concluir
+      if (e.altKey && e.code === 'KeyF' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        changeActivityStatus(activityId, 'completed');
+      }
+      
+      // Alt + C: Aguardar Cliente
+      if (e.altKey && e.code === 'KeyC' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        changeActivityStatus(activityId, 'waiting-client');
+      }
+      
+      // Alt + T: Aguardar Equipe
+      if (e.altKey && e.code === 'KeyT' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        changeActivityStatus(activityId, 'waiting-team');
+      }
+      
+      // Alt + E: Editar
+      if (e.altKey && e.code === 'KeyE' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        onSelectActivity?.(activityId);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [activities]);
+  
+  // Mudar status e parar timer
+  const changeActivityStatus = (activityId: string, newStatus: Activity['status']) => {
+    pauseActivityTimer(activityId);
+    onStatusChange(activityId, newStatus);
+    
+    // Se concluir, limpar timer e disparar confetes
+    if (newStatus === 'completed') {
+      const timerSeconds = activeTimers.get(activityId) || 0;
+      const actualMinutes = Math.ceil(timerSeconds / 60); // Converter para minutos
+      
+      // Salvar o tempo real gasto
+      onUpdateActivity(activityId, {
+        actualDuration: actualMinutes
+      });
+      
+      if (timersHook) {
+        timersHook.stopTimer(activityId);
+      }
+      
+      // 🎉 Disparar confetes!
+      fireConfetti();
+    }
+  };
   
   // Create form state
   const [formData, setFormData] = useState({
@@ -60,6 +294,7 @@ export function ActivityManager({
     description: '',
     clientId: '',
     assigneeId: currentUser.id,
+    selectedUsers: [currentUser.id] as string[], // Usuários selecionados
     dueDate: new Date(),
     estimatedMinutes: 60,
     isRecurring: false,
@@ -78,6 +313,11 @@ export function ActivityManager({
   }, [createDate]);
 
   const filteredActivities = activities.filter(activity => {
+    // Filtrar apenas atividades atribuídas ao usuário atual
+    const isAssignedToCurrentUser = activity.assignedUsers?.includes(currentUser.id) || 
+                                     activity.assignedTo === currentUser.id;
+    if (!isAssignedToCurrentUser) return false;
+    
     const matchesSearch = activity.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          activity.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || activity.status === statusFilter;
@@ -109,45 +349,59 @@ export function ActivityManager({
   // Separar hoje e outras
   const today = new Date();
   today.setHours(0,0,0,0);
-  const { todayActivities, otherActivities } = useMemo(() => {
+  const { todayActivities, otherActivities, recurringActivities } = useMemo(() => {
     const todayList: Activity[] = [];
     const others: Activity[] = [];
+    const recurring: Activity[] = [];
+    
     filteredActivities.forEach(a => {
       const baseDate = new Date(a.date);
       baseDate.setHours(0,0,0,0);
-
+      
+      // Se é recorrente, verificar se tem ocorrência hoje
       if (a.isRecurring) {
+        recurring.push(a);
+        
+        // Verificar se hoje está dentro do período de recorrência
         const meta = parseRecurrence(a);
-        const start = baseDate;
-        const end = meta.endDate ? meta.endDate : start;
-        end.setHours(0,0,0,0);
-        const inRange = today.getTime() >= start.getTime() && today.getTime() <= end.getTime();
-        if (inRange) {
+        const endDate = meta.endDate || baseDate;
+        endDate.setHours(0,0,0,0);
+        
+        if (today >= baseDate && today <= endDate) {
           const type = a.recurrenceType || meta.type;
+          let shouldAppearToday = false;
+          
           if (type === 'daily') {
-            const includeWeekends = (meta as any).includeWeekends !== false; // default true
-            const weekday = today.getDay();
-            if (!includeWeekends && (weekday === 0 || weekday === 6)) {
-              // pula fim de semana
-            } else {
-              todayList.push(a);
+            const includeWeekends = (meta as any).includeWeekends !== false;
+            const todayWeekday = today.getDay();
+            if (includeWeekends || (todayWeekday !== 0 && todayWeekday !== 6)) {
+              shouldAppearToday = true;
             }
-            return;
-          }
-          if (type === 'weekly') {
-            const weekDays = (meta.weekDays && meta.weekDays.length) ? meta.weekDays : [start.getDay()];
+          } else if (type === 'weekly') {
+            const weekDays = (meta.weekDays && meta.weekDays.length) ? meta.weekDays : [baseDate.getDay()];
             if (weekDays.includes(today.getDay())) {
-              todayList.push(a);
-              return;
+              shouldAppearToday = true;
             }
+          }
+          
+          if (shouldAppearToday) {
+            // Criar uma cópia da atividade representando a ocorrência de hoje
+            const todayOccurrence = {
+              ...a,
+              // Manter o ID original mas marcar que é uma ocorrência de hoje
+              date: new Date(today)
+            };
+            todayList.push(todayOccurrence);
           }
         }
+        return;
       }
-
-      // Não recorrente ou recorrente fora de ocorrência do dia
+      
+      // Não recorrente
       if (baseDate.getTime() === today.getTime()) todayList.push(a); else others.push(a);
     });
-    return { todayActivities: todayList, otherActivities: others };
+    
+    return { todayActivities: todayList, otherActivities: others, recurringActivities: recurring };
   }, [filteredActivities]);
 
   // Scroll até atividade selecionada ao vir do calendário
@@ -163,8 +417,14 @@ export function ActivityManager({
     () => activities.find(a => a.id === selectedActivityId) || null,
     [activities, selectedActivityId]
   );
-  const [editData, setEditData] = useState<{title: string; description?: string; status: Activity['status']}>({
-    title: '', description: '', status: 'pending'
+  const [editData, setEditData] = useState<{
+    title: string; 
+    description?: string; 
+    status: Activity['status'];
+    assignedTo: string;
+    selectedUsers: string[];
+  }>({
+    title: '', description: '', status: 'pending', assignedTo: '', selectedUsers: []
   });
   const [recurrenceEdit, setRecurrenceEdit] = useState<{
     enabled: boolean;
@@ -180,6 +440,8 @@ export function ActivityManager({
         title: selectedActivity.title,
         description: selectedActivity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '',
         status: selectedActivity.status,
+        assignedTo: selectedActivity.assignedTo,
+        selectedUsers: selectedActivity.assignedUsers || [selectedActivity.assignedTo],
       });
       const meta = parseRecurrence(selectedActivity);
       setRecurrenceEdit({
@@ -194,7 +456,7 @@ export function ActivityManager({
   }, [selectedActivity]);
 
   const handleCreateActivity = async () => {
-    if (!formData.title.trim() || !formData.clientId) return;
+    if (!formData.title.trim() || !formData.clientId || formData.selectedUsers.length === 0) return;
 
     // Se recorrente, embute metadados na descrição para o calendário renderizar ocorrências
     let description = formData.description;
@@ -214,6 +476,7 @@ export function ActivityManager({
       clientId: formData.clientId,
       assignedTo: formData.assigneeId,
       assignedToName: currentUser.name,
+      assignedUsers: formData.selectedUsers,
       clientName: clients.find(c => c.id === formData.clientId)?.name || '',
       date: formData.dueDate,
       estimatedDuration: formData.estimatedMinutes,
@@ -228,6 +491,7 @@ export function ActivityManager({
       description: '',
       clientId: '',
       assigneeId: currentUser.id,
+      selectedUsers: [currentUser.id],
       dueDate: new Date(),
       estimatedMinutes: 60,
       isRecurring: false,
@@ -312,89 +576,326 @@ export function ActivityManager({
               if (!client) return null;
 
               const isSelected = selectedActivityId === activity.id;
+              const isRunning = isTimerRunning(activity.id);
+              const timerSeconds = activeTimers.get(activity.id) || 0;
+              
+              // Verificar se é uma ocorrência de atividade recorrente de hoje
+              const isRecurringOccurrence = activity.isRecurring;
+              const todayStr = format(today, 'yyyy-MM-dd');
+              const meta = parseRecurrence(activity);
+              const isCompletedToday = isRecurringOccurrence && meta.completedDates?.includes(todayStr);
+              
+              // Para atividades recorrentes, o status depende se está concluída hoje OU se está rodando/fazendo
+              let displayStatus: Activity['status'];
+              if (isRecurringOccurrence) {
+                if (isCompletedToday) {
+                  displayStatus = 'completed';
+                } else if (activity.status === 'doing' || isRunning) {
+                  displayStatus = 'doing';
+                } else {
+                  displayStatus = 'pending';
+                }
+              } else {
+                displayStatus = activity.status;
+              }
+              
               return (
-                <Card key={activity.id} className={cn('p-4 transition cursor-pointer hover:bg-muted/40', isSelected ? 'ring-2 ring-primary' : '')} ref={isSelected ? selectedRef : undefined}
-                  onClick={() => onSelectActivity?.(activity.id)}
+                <Card 
+                  key={activity.id} 
+                  className={cn('p-4 transition border-l-4', isSelected ? 'ring-2 ring-primary' : '')} 
+                  style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
+                  ref={isSelected ? selectedRef : undefined}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold">{activity.title}</h3>
-                        <div 
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {client.name}
-                        </span>
-                      </div>
-                      {activity.description && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        {!activity.isRecurring ? (
-                          <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
-                        ) : (
-                          (() => {
-                            const match = activity.description?.match(/<recurrence>(.*?)<\/recurrence>/);
-                            const meta = match ? JSON.parse(match[1]) : undefined;
-                            if (meta?.endDate) {
-                              const [y,m,d] = String(meta.endDate).split('-').map(Number);
-                              const end = (y && m && d) ? new Date(y, m-1, d) : new Date(meta.endDate);
-                              return <span>↔️ até {format(end, 'dd/MM/yyyy', { locale: ptBR })}</span>;
-                            }
-                            return null;
-                          })()
-                        )}
-                        <span>⏱️ {activity.estimatedDuration} min</span>
-                        {activity.actualDuration && (
-                          <span>✅ {activity.actualDuration} min real</span>
+                  <div className="space-y-3">
+                    {/* Header com título e cliente */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{activity.title}</h3>
+                          <div 
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {client.name}
+                          </span>
+                          {isRecurringOccurrence && (
+                            <Badge variant="secondary" className="text-xs">
+                              ↔️ Recorrente
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="text-xs ml-auto">
+                            {STATUS_LABELS[displayStatus]}
+                          </Badge>
+                        </div>
+                        {activity.description && (
+                          <p className="text-sm text-muted-foreground">
+                            {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
+                          </p>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {/* Select de status */}
-                      <Select value={activity.status} onValueChange={(v) => {
-                        const newStatus = v as Activity['status'];
-                        if (newStatus === 'completed' && activity.isRecurring) {
-                          const today = new Date();
-                          const todayStr = format(today, 'yyyy-MM-dd');
-                          const weekday = today.getDay(); // 0=Dom .. 6=Sab
-                          const match = activity.description?.match(/<recurrence>(.*?)<\/recurrence>/);
-                          let meta: any = match ? JSON.parse(match[1]) : {};
-                          meta.type = meta.type || activity.recurrenceType || 'daily';
-                          // Validar se hoje é uma ocorrência legítima
-                          let isOccurrence = false;
-                          if (meta.type === 'daily') {
-                            const includeWeekends = meta.includeWeekends !== false;
-                            if (!includeWeekends && (weekday === 0 || weekday === 6)) {
-                              isOccurrence = false;
-                            } else {
-                              isOccurrence = true;
-                            }
-                          } else if (meta.type === 'weekly') {
-                            const wds = Array.isArray(meta.weekDays) && meta.weekDays.length ? meta.weekDays : [new Date(activity.date).getDay()];
-                            isOccurrence = wds.includes(weekday);
-                          }
-                          meta.completedDates = Array.isArray(meta.completedDates) ? meta.completedDates : [];
-                          if (isOccurrence && !meta.completedDates.includes(todayStr)) meta.completedDates.push(todayStr);
-                          const newDesc = `${(activity.description || '').replace(/<recurrence>(.*?)<\/recurrence>/, '')}`.trim();
-                          const descWithMeta = `${newDesc}\n<recurrence>${JSON.stringify(meta)}</recurrence>`;
-                          onUpdateActivity(activity.id, { description: descWithMeta });
-                        }
-                        onStatusChange(activity.id, newStatus);
-                      }}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    
+                    {/* Informações e ações */}
+                    <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>📅 Hoje</span>
+                        <span>⏱️ {activity.estimatedDuration} min estimado</span>
+                        {displayStatus === 'completed' && activity.actualDuration && (
+                          <span className="text-green-600 font-medium">
+                            ✅ {activity.actualDuration} min realizado
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {/* Timer display */}
+                        {(displayStatus === 'doing' || isRunning) && (
+                          <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded text-sm font-mono">
+                            <Clock className="w-3 h-3" />
+                            {formatTimer(timerSeconds)}
+                          </div>
+                        )}
+                        
+                        {/* Botões de ação baseados no status */}
+                        {displayStatus === 'pending' && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (isRecurringOccurrence) {
+                                // Para recorrentes, atualizar o status para doing
+                                onUpdateActivity(activity.id, { status: 'doing' });
+                                startActivityTimer(activity.id);
+                              } else {
+                                startActivityTimer(activity.id);
+                              }
+                            }}
+                            className="gap-1"
+                          >
+                            <Play className="w-3 h-3" />
+                            Iniciar
+                          </Button>
+                        )}
+                        
+                        {displayStatus === 'doing' && (
+                          <>
+                            {isRunning ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => pauseActivityTimer(activity.id)}
+                                className="gap-1"
+                              >
+                                <Pause className="w-3 h-3" />
+                                Pausar
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => startActivityTimer(activity.id)}
+                                className="gap-1"
+                              >
+                                <Play className="w-3 h-3" />
+                                Retomar
+                              </Button>
+                            )}
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                pauseActivityTimer(activity.id);
+                                if (!isRecurringOccurrence) {
+                                  changeActivityStatus(activity.id, 'waiting-client');
+                                } else {
+                                  // Para recorrente, atualizar o status mas manter os metadados
+                                  onUpdateActivity(activity.id, { status: 'waiting-client' });
+                                }
+                              }}
+                              className="gap-1"
+                              title="Aguardando Cliente"
+                            >
+                              <UserX className="w-3 h-3" />
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                pauseActivityTimer(activity.id);
+                                if (!isRecurringOccurrence) {
+                                  changeActivityStatus(activity.id, 'waiting-team');
+                                } else {
+                                  // Para recorrente, atualizar o status mas manter os metadados
+                                  onUpdateActivity(activity.id, { status: 'waiting-team' });
+                                }
+                              }}
+                              className="gap-1"
+                              title="Aguardando Equipe"
+                            >
+                              <Users className="w-3 h-3" />
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => {
+                                if (isRecurringOccurrence) {
+                                  // Marcar esta ocorrência como concluída
+                                  pauseActivityTimer(activity.id);
+                                  const updatedCompletedDates = [...(meta.completedDates || []), todayStr];
+                                  const updatedMeta = {
+                                    ...meta,
+                                    completedDates: updatedCompletedDates
+                                  };
+                                  const recurrenceBlock = `\n<recurrence>${JSON.stringify(updatedMeta)}</recurrence>`;
+                                  const cleanDesc = activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '';
+                                  
+                                  // Calcular e salvar tempo real gasto
+                                  const timerSeconds = activeTimers.get(activity.id) || 0;
+                                  const actualMinutes = Math.ceil(timerSeconds / 60);
+                                  
+                                  onUpdateActivity(activity.id, {
+                                    description: `${cleanDesc}${recurrenceBlock}`.trim(),
+                                    status: 'pending', // Resetar para pending para o próximo dia
+                                    actualDuration: actualMinutes
+                                  });
+                                  
+                                  if (timersHook) {
+                                    timersHook.stopTimer(activity.id);
+                                  }
+                                  
+                                  fireConfetti();
+                                } else {
+                                  changeActivityStatus(activity.id, 'completed');
+                                }
+                              }}
+                              className="gap-1 bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                              Concluir
+                            </Button>
+                          </>
+                        )}
+                        
+                        {(displayStatus === 'waiting-client' || displayStatus === 'waiting-team') && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                if (isRecurringOccurrence) {
+                                  onUpdateActivity(activity.id, { status: 'doing' });
+                                  startActivityTimer(activity.id);
+                                } else {
+                                  startActivityTimer(activity.id);
+                                }
+                              }}
+                              className="gap-1"
+                            >
+                              <Play className="w-3 h-3" />
+                              Retomar
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => {
+                                if (isRecurringOccurrence) {
+                                  // Marcar esta ocorrência como concluída
+                                  pauseActivityTimer(activity.id);
+                                  const updatedCompletedDates = [...(meta.completedDates || []), todayStr];
+                                  const updatedMeta = {
+                                    ...meta,
+                                    completedDates: updatedCompletedDates
+                                  };
+                                  const recurrenceBlock = `\n<recurrence>${JSON.stringify(updatedMeta)}</recurrence>`;
+                                  const cleanDesc = activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '';
+                                  onUpdateActivity(activity.id, {
+                                    description: `${cleanDesc}${recurrenceBlock}`.trim(),
+                                    status: 'pending' // Resetar para pending para o próximo dia
+                                  });
+                                  fireConfetti();
+                                } else {
+                                  changeActivityStatus(activity.id, 'completed');
+                                }
+                              }}
+                              className="gap-1 bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                              Concluir
+                            </Button>
+                          </>
+                        )}
+                        
+                        {displayStatus === 'completed' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (isRecurringOccurrence) {
+                                // Remover a data de completedDates e resetar status para pending
+                                const updatedCompletedDates = (meta.completedDates || []).filter(d => d !== todayStr);
+                                const updatedMeta = {
+                                  ...meta,
+                                  completedDates: updatedCompletedDates
+                                };
+                                const recurrenceBlock = `\n<recurrence>${JSON.stringify(updatedMeta)}</recurrence>`;
+                                const cleanDesc = activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '';
+                                onUpdateActivity(activity.id, {
+                                  description: `${cleanDesc}${recurrenceBlock}`.trim(),
+                                  status: 'pending'
+                                });
+                              } else {
+                                changeActivityStatus(activity.id, 'pending');
+                              }
+                            }}
+                            className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
+                            title="Reverter conclusão"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Reabrir
+                          </Button>
+                        )}
+                        
+                        {/* Botões de editar e excluir */}
+                        <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openPictureInPicture(activity.id)}
+                            className="gap-1 h-8 px-2"
+                            title="Abrir Picture-in-Picture"
+                          >
+                            <Monitor className="w-3 h-3" />
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onSelectActivity?.(activity.id)}
+                            className="gap-1 h-8 px-2"
+                            title="Editar atividade"
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm('Deseja realmente excluir esta atividade?')) {
+                                pauseActivityTimer(activity.id);
+                                onDeleteActivity(activity.id);
+                              }
+                            }}
+                            className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                            title="Excluir atividade"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -417,87 +918,88 @@ export function ActivityManager({
               const client = getClientById(activity.clientId);
               if (!client) return null;
 
-              // Verificar se recorrente pode ser alterada hoje
-              let canChangeStatus = true;
-              if (activity.isRecurring) {
-                const meta = parseRecurrence(activity);
-                const todayWeekday = today.getDay();
-                const type = activity.recurrenceType || meta.type;
-                if (type === 'weekly') {
-                  const baseDate = new Date(activity.date); baseDate.setHours(0,0,0,0);
-                  const weekDays = (meta.weekDays && meta.weekDays.length) ? meta.weekDays : [baseDate.getDay()];
-                  canChangeStatus = weekDays.includes(todayWeekday); // só habilita se hoje for ocorrência
-                }
-                // daily nunca cai em outras, então não tratamos
-              }
-
               return (
-                <Card key={activity.id} className="p-4 transition cursor-pointer hover:bg-muted/40" onClick={() => onSelectActivity?.(activity.id)}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold">{activity.title}</h3>
-                        <div 
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {client.name}
-                        </span>
-                      </div>
-                      {activity.description && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
-                        <span>⏱️ {activity.estimatedDuration} min</span>
-                        {activity.actualDuration && (
-                          <span>✅ {activity.actualDuration} min real</span>
+                <Card 
+                  key={activity.id} 
+                  className="p-4 transition border-l-4" 
+                  style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{activity.title}</h3>
+                          <div 
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {client.name}
+                          </span>
+                        </div>
+                        {activity.description && (
+                          <p className="text-sm text-muted-foreground">
+                            {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
+                          </p>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Select value={activity.status} onValueChange={(v) => {
-                        if (!canChangeStatus) return; // proteção extra
-                        const newStatus = v as Activity['status'];
-                        if (newStatus === 'completed' && activity.isRecurring) {
-                          const today = new Date();
-                          const todayStr = format(today, 'yyyy-MM-dd');
-                          const weekday = today.getDay();
-                          const match = activity.description?.match(/<recurrence>(.*?)<\/recurrence>/);
-                          let meta: any = match ? JSON.parse(match[1]) : {};
-                          meta.type = meta.type || activity.recurrenceType || 'daily';
-                          let isOccurrence = false;
-                          if (meta.type === 'daily') {
-                            const includeWeekends = meta.includeWeekends !== false;
-                            if (!includeWeekends && (weekday === 0 || weekday === 6)) {
-                              isOccurrence = false;
-                            } else {
-                              isOccurrence = true;
-                            }
-                          } else if (meta.type === 'weekly') {
-                            const wds = Array.isArray(meta.weekDays) && meta.weekDays.length ? meta.weekDays : [new Date(activity.date).getDay()];
-                            isOccurrence = wds.includes(weekday);
-                          }
-                          meta.completedDates = Array.isArray(meta.completedDates) ? meta.completedDates : [];
-                          if (isOccurrence && !meta.completedDates.includes(todayStr)) meta.completedDates.push(todayStr);
-                          const newDesc = `${(activity.description || '').replace(/<recurrence>(.*?)<\/recurrence>/, '')}`.trim();
-                          const descWithMeta = `${newDesc}\n<recurrence>${JSON.stringify(meta)}</recurrence>`;
-                          onUpdateActivity(activity.id, { description: descWithMeta });
-                        }
-                        onStatusChange(activity.id, newStatus);
-                      }}>
-                        <SelectTrigger className="w-48" disabled={!canChangeStatus} title={!canChangeStatus ? 'Status só pode ser alterado no dia da ocorrência' : undefined}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    
+                    <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>📅 {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                        <span>⏱️ {activity.estimatedDuration} min estimado</span>
+                        {activity.status === 'completed' && activity.actualDuration && (
+                          <span className="text-green-600 font-medium">
+                            ✅ {activity.actualDuration} min realizado
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {activity.status === 'completed' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => changeActivityStatus(activity.id, 'pending')}
+                            className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
+                            title="Reverter conclusão"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Reabrir
+                          </Button>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            {STATUS_LABELS[activity.status]}
+                          </Badge>
+                        )}
+                        
+                        <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onSelectActivity?.(activity.id)}
+                            className="gap-1 h-8 px-2"
+                            title="Editar atividade"
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm('Deseja realmente excluir esta atividade?')) {
+                                onDeleteActivity(activity.id);
+                              }
+                            }}
+                            className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                            title="Excluir atividade"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -507,6 +1009,115 @@ export function ActivityManager({
               <p className="text-sm text-muted-foreground">Sem outras atividades.</p>
             )}
           </div>
+        </div>
+        
+        {/* Divisor */}
+        <div className="h-px bg-border" />
+        
+        {/* Atividades Recorrentes */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Atividades Recorrentes ({recurringActivities.length})
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRecurring(!showRecurring)}
+              className="h-8"
+            >
+              {showRecurring ? '▼ Ocultar' : '▶ Mostrar'}
+            </Button>
+          </div>
+          
+          {showRecurring && (
+            <div className="grid gap-4">
+              {recurringActivities.map((activity) => {
+                const client = getClientById(activity.clientId);
+                if (!client) return null;
+                
+                const meta = parseRecurrence(activity);
+                const recurrenceInfo = activity.recurrenceType === 'daily' 
+                  ? `Diária ${(meta as any).includeWeekends === false ? '(sem finais de semana)' : ''}`
+                  : activity.recurrenceType === 'weekly' 
+                  ? `Semanal`
+                  : 'Recorrente';
+
+                return (
+                  <Card key={activity.id} className="p-4 transition border-l-4" 
+                    style={{ borderLeftColor: `hsl(var(--client-${client.colorIndex}))` }}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold">{activity.title}</h3>
+                            <Badge variant="secondary" className="text-xs">
+                              ↔️ {recurrenceInfo}
+                            </Badge>
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {client.name}
+                            </span>
+                          </div>
+                          {activity.description && (
+                            <p className="text-sm text-muted-foreground">
+                              {activity.description.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>📅 Início: {format(new Date(activity.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
+                          {meta.endDate && (
+                            <span>🏁 Fim: {format(meta.endDate, 'dd/MM/yyyy', { locale: ptBR })}</span>
+                          )}
+                          <span>⏱️ {activity.estimatedDuration} min</span>
+                          {meta.completedDates && meta.completedDates.length > 0 && (
+                            <span>✅ {meta.completedDates.length} concluídas</span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onSelectActivity?.(activity.id)}
+                            className="gap-1 h-8 px-2"
+                            title="Editar atividade"
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+                          
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm('Deseja realmente excluir esta atividade recorrente?')) {
+                                onDeleteActivity(activity.id);
+                              }
+                            }}
+                            className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                            title="Excluir atividade"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+              {recurringActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground">Sem atividades recorrentes.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -545,6 +1156,21 @@ export function ActivityManager({
               </div>
             </div>
 
+            {/* Responsável Principal */}
+            <div className="space-y-2">
+              <Label htmlFor="assignee">Responsável Principal*</Label>
+              <Select value={formData.assigneeId} onValueChange={(value) => setFormData(prev => ({ ...prev, assigneeId: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o responsável" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="description">Descrição</Label>
               <Textarea
@@ -554,6 +1180,42 @@ export function ActivityManager({
                 placeholder="Descreva a atividade..."
                 rows={3}
               />
+            </div>
+
+            {/* Seleção de Usuários */}
+            <div className="space-y-3 border rounded-md p-3">
+              <Label>Atribuir a Usuários (quem verá esta atividade)</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {users.map((user) => (
+                  <div key={user.id} className="flex items-center gap-2">
+                    <input
+                      id={`user-${user.id}`}
+                      type="checkbox"
+                      checked={formData.selectedUsers.includes(user.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormData(prev => ({
+                            ...prev,
+                            selectedUsers: [...prev.selectedUsers, user.id]
+                          }));
+                        } else {
+                          setFormData(prev => ({
+                            ...prev,
+                            selectedUsers: prev.selectedUsers.filter(id => id !== user.id)
+                          }));
+                        }
+                      }}
+                      className="cursor-pointer"
+                    />
+                    <Label htmlFor={`user-${user.id}`} className="cursor-pointer font-normal">
+                      {user.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              {formData.selectedUsers.length === 0 && (
+                <p className="text-xs text-destructive">Selecione pelo menos um usuário</p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -708,6 +1370,25 @@ export function ActivityManager({
                 <Label>Descrição</Label>
                 <Textarea rows={3} value={editData.description} onChange={(e) => setEditData(prev => ({...prev, description: e.target.value}))} />
               </div>
+              
+              {/* Responsável Principal */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-assignee">Responsável Principal</Label>
+                <Select 
+                  value={editData.assignedTo} 
+                  onValueChange={(value) => setEditData(prev => ({ ...prev, assignedTo: value }))}
+                >
+                  <SelectTrigger id="edit-assignee">
+                    <SelectValue placeholder="Selecione o responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
               <div className="space-y-3 border rounded-md p-3">
                 <div className="flex items-center justify-between">
                   <Label>Recorrência</Label>
@@ -781,6 +1462,43 @@ export function ActivityManager({
                   </div>
                 )}
               </div>
+              
+              {/* Seleção de Usuários */}
+              <div className="space-y-3 border rounded-md p-3">
+                <Label>Usuários que podem ver esta atividade</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {users.map((user) => (
+                    <div key={user.id} className="flex items-center gap-2">
+                      <input
+                        id={`edit-user-${user.id}`}
+                        type="checkbox"
+                        checked={editData.selectedUsers.includes(user.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditData(prev => ({
+                              ...prev,
+                              selectedUsers: [...prev.selectedUsers, user.id]
+                            }));
+                          } else {
+                            setEditData(prev => ({
+                              ...prev,
+                              selectedUsers: prev.selectedUsers.filter(id => id !== user.id)
+                            }));
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Label htmlFor={`edit-user-${user.id}`} className="cursor-pointer font-normal">
+                        {user.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {editData.selectedUsers.length === 0 && (
+                  <p className="text-xs text-destructive">Selecione pelo menos um usuário</p>
+                )}
+              </div>
+              
               <div className="space-y-2">
                 <Label>Status</Label>
                 {(() => {
@@ -847,6 +1565,8 @@ export function ActivityManager({
                     title: editData.title,
                     description: `${cleanOrig}${recurrenceBlock}`.trim(),
                     status: finalStatus,
+                    assignedTo: editData.assignedTo,
+                    assignedUsers: editData.selectedUsers,
                     isRecurring: recurrenceEdit.enabled,
                     recurrenceType: recurrenceEdit.enabled ? recurrenceEdit.type : undefined,
                   });

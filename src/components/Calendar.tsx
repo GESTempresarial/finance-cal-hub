@@ -1,19 +1,29 @@
 import { useState } from 'react';
-import { Activity, Client } from '@/types';
+import { Activity, Client, STATUS_LABELS, User } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar as CalendarUI } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { fireConfetti } from '@/lib/confetti';
 
 interface CalendarProps {
   activities: Activity[];
   clients: Client[];
   currentUser: string;
+  users: User[];
   onStatusChange: (activityId: string, status: Activity['status']) => void;
   onStartTimer: (activityId: string) => void;
   onStopTimer: (activityId: string) => void;
-  activeTimers: Set<string>;
+  activeTimers: Map<string, number>;
   onCreateActivity: () => void;
   onActivityClick?: (activityId: string) => void;
   onUpdateActivity?: (id: string, updates: Partial<Activity>) => void;
@@ -24,6 +34,7 @@ export function Calendar({
   activities, 
   clients, 
   currentUser,
+  users,
   onStatusChange, 
   onStartTimer, 
   onStopTimer,
@@ -35,6 +46,24 @@ export function Calendar({
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('month');
+  
+  // Estado para edição de atividade
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [editData, setEditData] = useState<{
+    title: string;
+    description?: string;
+    status: Activity['status'];
+    assignedTo: string;
+    selectedUsers: string[];
+  }>({ title: '', description: '', status: 'pending', assignedTo: '', selectedUsers: [] });
+  const [recurrenceEdit, setRecurrenceEdit] = useState<{
+    enabled: boolean;
+    type: 'daily' | 'weekly';
+    endDate: Date;
+    weekDays: number[];
+    completedDates: string[];
+    includeWeekends: boolean;
+  }>({ enabled: false, type: 'daily', endDate: new Date(), weekDays: [], completedDates: [], includeWeekends: true });
 
   // Para visão mensal precisamos preencher a grade começando no domingo da primeira semana que contém o dia 1
   let periodStart: Date;
@@ -74,11 +103,87 @@ export function Calendar({
     return result;
   };
 
+  // Abrir modal de edição
+  const handleActivityClick = (activity: Activity) => {
+    setEditingActivity(activity);
+    setEditData({
+      title: activity.title,
+      description: activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '',
+      status: activity.status,
+      assignedTo: activity.assignedTo,
+      selectedUsers: activity.assignedUsers || [activity.assignedTo],
+    });
+    const meta = parseRecurrence(activity);
+    setRecurrenceEdit({
+      enabled: !!(activity.isRecurring || meta.type),
+      type: (activity.recurrenceType || meta.type || 'daily') as 'daily' | 'weekly',
+      endDate: meta.endDate || new Date(),
+      weekDays: meta.weekDays || [],
+      completedDates: meta.completedDates || [],
+      includeWeekends: (meta as any).includeWeekends !== false,
+    });
+  };
+
+  // Salvar edição
+  const handleSaveEdit = () => {
+    if (!editingActivity || !onUpdateActivity) return;
+    
+    // construir metadados de recorrência se habilitado
+    let recurrenceBlock = '';
+    if (recurrenceEdit.enabled) {
+      const meta: any = {
+        type: recurrenceEdit.type,
+        endDate: format(recurrenceEdit.endDate, 'yyyy-MM-dd'),
+        weekDays: recurrenceEdit.type === 'weekly' ? recurrenceEdit.weekDays : undefined,
+        completedDates: recurrenceEdit.completedDates,
+        includeWeekends: recurrenceEdit.type === 'daily' ? recurrenceEdit.includeWeekends : undefined,
+      };
+      recurrenceBlock = `\n<recurrence>${JSON.stringify(meta)}</recurrence>`;
+    }
+    const cleanOrig = editData.description?.trim() || '';
+    
+    // Verificar se pode mudar status hoje
+    let finalStatus: Activity['status'] = editData.status;
+    if (recurrenceEdit.enabled) {
+      const todayWeekday = new Date().getDay();
+      if (recurrenceEdit.type === 'weekly') {
+        const weekDays = recurrenceEdit.weekDays && recurrenceEdit.weekDays.length
+          ? recurrenceEdit.weekDays
+          : [new Date(editingActivity.date).getDay()];
+        const canChange = weekDays.includes(todayWeekday);
+        if (!canChange) finalStatus = editingActivity.status; // mantém
+      }
+    }
+    
+    // 🎉 Disparar confetes se status mudou para 'completed'
+    const wasCompleted = editingActivity.status === 'completed';
+    const isNowCompleted = finalStatus === 'completed';
+    if (!wasCompleted && isNowCompleted) {
+      fireConfetti();
+    }
+    
+    onUpdateActivity(editingActivity.id, {
+      title: editData.title,
+      description: `${cleanOrig}${recurrenceBlock}`.trim(),
+      status: finalStatus,
+      assignedTo: editData.assignedTo,
+      assignedUsers: editData.selectedUsers,
+      isRecurring: recurrenceEdit.enabled,
+      recurrenceType: recurrenceEdit.enabled ? recurrenceEdit.type : undefined,
+    });
+    
+    setEditingActivity(null);
+  };
+
   const getActivitiesForDay = (day: Date) => {
     const dayStart = new Date(day);
     dayStart.setHours(0,0,0,0);
 
     return activities.filter(activity => {
+      // Filtrar apenas atividades atribuídas ao usuário atual
+      const isAssignedToCurrentUser = activity.assignedUsers?.includes(currentUser) || 
+                                       activity.assignedTo === currentUser;
+      if (!isAssignedToCurrentUser) return false;
       const start = new Date(activity.date);
       start.setHours(0,0,0,0);
 
@@ -127,7 +232,7 @@ export function Calendar({
   return (
     <div className="h-full flex flex-col">
       {/* Calendar Header */}
-      <div className="flex items-center justify-between p-6 border-b bg-card">
+      <div className="flex items-center justify-between p-6 border-b bg-muted/30">
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <h2 className="text-2xl font-bold">
@@ -239,7 +344,10 @@ export function Calendar({
                       )}
                       title={activity.title}
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); onActivityClick?.(activity.id); }}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleActivityClick(activity);
+                      }}
                       draggable={!activity.isRecurring}
                       onDragStart={(e) => {
                         e.dataTransfer.setData('text/plain', activity.id);
@@ -268,6 +376,237 @@ export function Calendar({
           );
         })}
       </div>
+
+      {/* Edit Activity Dialog */}
+      <Dialog open={!!editingActivity} onOpenChange={() => setEditingActivity(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Editar Atividade</DialogTitle>
+          </DialogHeader>
+          {editingActivity && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input 
+                  value={editData.title} 
+                  onChange={(e) => setEditData(prev => ({...prev, title: e.target.value}))} 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Textarea 
+                  rows={3} 
+                  value={editData.description} 
+                  onChange={(e) => setEditData(prev => ({...prev, description: e.target.value}))} 
+                />
+              </div>
+              
+              {/* Responsável Principal */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-assignee">Responsável Principal</Label>
+                <Select 
+                  value={editData.assignedTo} 
+                  onValueChange={(value) => setEditData(prev => ({ ...prev, assignedTo: value }))}
+                >
+                  <SelectTrigger id="edit-assignee">
+                    <SelectValue placeholder="Selecione o responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-3 border rounded-md p-3">
+                <div className="flex items-center justify-between">
+                  <Label>Recorrência</Label>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Label htmlFor="editRecurrenceToggle">Ativar</Label>
+                    <input 
+                      id="editRecurrenceToggle" 
+                      type="checkbox" 
+                      checked={recurrenceEdit.enabled} 
+                      onChange={(e) => setRecurrenceEdit(r => ({...r, enabled: e.target.checked}))} 
+                    />
+                  </div>
+                </div>
+                {recurrenceEdit.enabled && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Tipo</Label>
+                      <Select 
+                        value={recurrenceEdit.type} 
+                        onValueChange={(v) => setRecurrenceEdit(r => ({...r, type: v as 'daily'|'weekly'}))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">Diária</SelectItem>
+                          <SelectItem value="weekly">Semanal</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Até</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start text-left font-normal">
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(recurrenceEdit.endDate, 'dd/MM/yyyy', { locale: ptBR })}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarUI
+                            mode="single"
+                            selected={recurrenceEdit.endDate}
+                            onSelect={(date) => date && setRecurrenceEdit(r => ({...r, endDate: date}))}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {recurrenceEdit.type === 'weekly' && (
+                      <div className="space-y-2 col-span-2">
+                        <Label>Dias da semana</Label>
+                        <div className="grid grid-cols-7 gap-1">
+                          {['D','S','T','Q','Q','S','S'].map((d,i) => (
+                            <Button 
+                              key={i} 
+                              type="button" 
+                              variant={recurrenceEdit.weekDays.includes(i) ? 'default' : 'outline'} 
+                              className="h-8"
+                              onClick={() => setRecurrenceEdit(r => ({
+                                ...r, 
+                                weekDays: r.weekDays.includes(i) 
+                                  ? r.weekDays.filter(x=>x!==i) 
+                                  : [...r.weekDays, i]
+                              }))}
+                            >
+                              {d}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {recurrenceEdit.type === 'daily' && (
+                      <div className="space-y-2 col-span-2 flex items-center gap-2">
+                        <input
+                          id="editIncludeWeekends"
+                          type="checkbox"
+                          checked={recurrenceEdit.includeWeekends}
+                          onChange={(e) => setRecurrenceEdit(r => ({ ...r, includeWeekends: e.target.checked }))}
+                        />
+                        <Label htmlFor="editIncludeWeekends" className="cursor-pointer">
+                          Incluir finais de semana
+                        </Label>
+                      </div>
+                    )}
+                    {recurrenceEdit.completedDates.length > 0 && (
+                      <div className="col-span-2 text-xs text-muted-foreground">
+                        Ocorrências concluídas: {recurrenceEdit.completedDates.length}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Seleção de Usuários */}
+              <div className="space-y-3 border rounded-md p-3">
+                <Label>Usuários que podem ver esta atividade</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {users.map((user) => (
+                    <div key={user.id} className="flex items-center gap-2">
+                      <input
+                        id={`edit-user-${user.id}`}
+                        type="checkbox"
+                        checked={editData.selectedUsers.includes(user.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditData(prev => ({
+                              ...prev,
+                              selectedUsers: [...prev.selectedUsers, user.id]
+                            }));
+                          } else {
+                            setEditData(prev => ({
+                              ...prev,
+                              selectedUsers: prev.selectedUsers.filter(id => id !== user.id)
+                            }));
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Label htmlFor={`edit-user-${user.id}`} className="cursor-pointer font-normal">
+                        {user.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {editData.selectedUsers.length === 0 && (
+                  <p className="text-xs text-destructive">Selecione pelo menos um usuário</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Status</Label>
+                {(() => {
+                  // determinar se pode mudar status nesta modal
+                  let canChange = true;
+                  if (recurrenceEdit.enabled) {
+                    const todayWeekday = new Date().getDay();
+                    if (recurrenceEdit.type === 'weekly') {
+                      const weekDays = recurrenceEdit.weekDays && recurrenceEdit.weekDays.length
+                        ? recurrenceEdit.weekDays
+                        : [new Date(editingActivity.date).getDay()];
+                      canChange = weekDays.includes(todayWeekday);
+                    }
+                    // daily sempre pode
+                  }
+                  return (
+                    <>
+                      <Select 
+                        value={editData.status} 
+                        onValueChange={(v) => canChange && setEditData(prev => ({
+                          ...prev, 
+                          status: v as Activity['status']
+                        }))}
+                      >
+                        <SelectTrigger 
+                          disabled={!canChange} 
+                          title={!canChange ? 'Status só pode ser alterado no dia da ocorrência' : undefined}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!canChange && (
+                        <p className="text-xs text-muted-foreground">
+                          Só é possível alterar o status no dia configurado da recorrência.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditingActivity(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveEdit}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

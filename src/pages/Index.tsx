@@ -95,6 +95,7 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
   return (
     <MainLayout
       currentUser={currentUser}
+      users={users}
       onLogout={handleLogout}
       activitiesHook={activitiesHook}
       clientsHook={clientsHook}

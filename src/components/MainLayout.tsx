@@ -14,6 +14,7 @@ import { useTimers } from '@/hooks/useTimers';
 
 interface MainLayoutProps {
   currentUser: User;
+  users: User[];
   onLogout: () => void;
   activitiesHook: ReturnType<typeof import("@/hooks/useActivities").useActivities>;
   clientsHook: ReturnType<typeof import("@/hooks/useClients").useClients>;
@@ -21,7 +22,7 @@ interface MainLayoutProps {
 }
 
 
-export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook, timersHook }: MainLayoutProps) {
+export function MainLayout({ currentUser, users, onLogout, activitiesHook, clientsHook, timersHook }: MainLayoutProps) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
@@ -65,8 +66,13 @@ export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook,
 
   const {
     activeTimers,
+    runningActivityId,
     startTimer,
-    stopTimer
+    pauseTimer,
+    stopTimer,
+    getTimerSeconds,
+    isTimerRunning,
+    formatTimer,
   } = timersHook;
 
   return (
@@ -124,6 +130,7 @@ export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook,
                   activities={activities}
                   clients={clients}
                   currentUser={currentUser.id}
+                  users={users}
                   onStatusChange={updateActivityStatus}
                   onStartTimer={startTimer}
                   onStopTimer={stopTimer}
@@ -140,6 +147,7 @@ export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook,
                   activities={activities}
                   clients={clients}
                   currentUser={currentUser}
+                  users={users}
                   onCreateActivity={createActivity}
                   onUpdateActivity={updateActivity}
                   onDeleteActivity={deleteActivity}
@@ -152,6 +160,16 @@ export function MainLayout({ currentUser, onLogout, activitiesHook, clientsHook,
                   selectedActivityId={selectedActivityId}
                   onClearSelectedActivity={() => setSelectedActivityId(null)}
                   onSelectActivity={(id) => setSelectedActivityId(id)}
+                  timersHook={{
+                    activeTimers,
+                    runningActivityId,
+                    startTimer,
+                    pauseTimer,
+                    stopTimer,
+                    getTimerSeconds,
+                    isTimerRunning,
+                    formatTimer,
+                  }}
                 />
               </TabsContent>
 

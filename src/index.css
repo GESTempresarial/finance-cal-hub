@@ -133,5 +133,27 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    position: relative;
   }
+}
+
+/* Estilos para o Floating Timer com react-draggable */
+.react-draggable {
+  position: fixed !important;
+  z-index: 9999 !important;
+}
+
+.react-draggable-dragging {
+  cursor: grabbing !important;
+  user-select: none;
+  z-index: 10000 !important;
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
