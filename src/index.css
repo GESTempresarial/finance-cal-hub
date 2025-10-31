@@ -51,11 +51,11 @@ All colors MUST be HSL.
     --client-10: 160 84% 39%; /* Teal */
 
     /* Status Colors */
-    --status-pending: 45 93% 47%;     /* Yellow */
-    --status-doing: 221 83% 53%;      /* Blue */
+    --status-pending: 0 84% 60%;      /* Red - A fazer */
+    --status-doing: 45 93% 47%;       /* Yellow - Fazendo */
     --status-waiting-client: 25 95% 53%; /* Orange */
     --status-waiting-team: 262 83% 58%;  /* Purple */
-    --status-completed: 142 71% 45%;     /* Green */
+    --status-completed: 142 71% 45%;  /* Green - Feito */
 
     /* Gradients */
     --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(262 83% 58%));

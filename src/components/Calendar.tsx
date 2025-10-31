@@ -107,6 +107,16 @@ export function Calendar({
     return result;
   };
 
+  // Função auxiliar para obter a cor baseada no status
+  const getStatusColor = (status: Activity["status"]) => {
+    if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
+    if (status === "doing") return "hsl(45, 93%, 47%)"; // Amarelo - Fazendo
+    if (status === "completed") return "hsl(142, 71%, 45%)"; // Verde - Feito
+    if (status === "waiting-client") return "hsl(25, 95%, 53%)"; // Laranja
+    if (status === "waiting-team") return "hsl(262, 83%, 58%)"; // Roxo
+    return "hsl(0, 0%, 50%)"; // Cinza padrão
+  };
+
   // Abrir modal de edição
   const handleActivityClick = (activity: Activity) => {
     setEditingActivity(activity);
@@ -337,12 +347,15 @@ export function Calendar({
                   const client = getClientById(activity.clientId);
                   if (!client) return null;
 
-                  // Card minimal: cor do cliente, nome e status
+                  // Card minimal: cor do status, nome e status
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const meta = parseRecurrence(activity);
                   const isCompletedOccurrence = activity.isRecurring
                     ? !!meta.completedDates?.includes(dateStr)
                     : activity.status === 'completed';
+                  
+                  // Determinar o status a ser exibido
+                  const displayStatus = isCompletedOccurrence ? 'completed' : activity.status;
 
                   return (
                     <div
@@ -362,27 +375,21 @@ export function Calendar({
                         e.dataTransfer.setData('text/plain', activity.id);
                         e.dataTransfer.effectAllowed = 'move';
                       }}
+                      style={{
+                        borderLeftWidth: '3px',
+                        borderLeftColor: getStatusColor(displayStatus)
+                      }}
                     >
                       {view === 'week' ? (
                         <>
                           <div className="flex items-center gap-1 md:gap-2">
-                            <span
-                              className="inline-block w-2 h-2 md:w-3 md:h-3 rounded-full shrink-0"
-                              style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
-                              aria-hidden
-                            />
                             <span className="truncate font-semibold text-xs md:text-sm flex-1">{activity.title}</span>
                             {isCompletedOccurrence && <span className="text-xs md:text-sm">✔️</span>}
                           </div>
-                          <span className="text-xs text-muted-foreground pl-3 md:pl-5">{client.name}</span>
+                          <span className="text-xs text-muted-foreground">{client.name}</span>
                         </>
                       ) : (
                         <>
-                          <span
-                            className="inline-block w-2 h-2 md:w-2.5 md:h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: `hsl(var(--client-${client.colorIndex}))` }}
-                            aria-hidden
-                          />
                           <span className="truncate font-medium text-xs flex-1">{activity.title}</span>
                           <span className="text-xs">{isCompletedOccurrence ? '✔️' : ''}</span>
                         </>

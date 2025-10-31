@@ -59,6 +59,7 @@ interface ActivityManagerProps {
   onUpdateActivity: (id: string, updates: Partial<Activity>) => void;
   onDeleteActivity: (id: string) => void;
   onStatusChange: (id: string, status: Activity["status"]) => void;
+  onCreateClient?: (client: Omit<Client, "id" | "createdAt">) => void;
   showCreateForm?: boolean;
   onCloseCreateForm?: () => void;
   onOpenCreateForm?: () => void;
@@ -89,6 +90,7 @@ export function ActivityManager({
   onUpdateActivity,
   onDeleteActivity,
   onStatusChange,
+  onCreateClient,
   showCreateForm = false,
   onCloseCreateForm,
   onOpenCreateForm,
@@ -109,6 +111,10 @@ export function ActivityManager({
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(
     new Set()
   ); // IDs das atividades com descrição expandida
+
+  // Estados para criar novo cliente inline
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
 
   // Toggle para expandir/colapsar descrição
   const toggleDescription = (activityId: string) => {
@@ -636,12 +642,14 @@ export function ActivityManager({
             todayList.push(todayOccurrence);
           }
         }
-        return;
+        // NÃO retornar aqui - continuar para verificar outras categorizações
       }
 
-      // Não recorrente
+      // Não recorrente OU recorrente (para todas as categorizações)
       if (baseDate.getTime() === today.getTime()) {
-        todayList.push(a);
+        if (!a.isRecurring) { // Só adicionar se não for recorrente (recorrentes já foram adicionados acima)
+          todayList.push(a);
+        }
       } else {
         // Separar em vencidas, próximas e concluídas
         if (a.status === "completed") {
@@ -809,6 +817,16 @@ export function ActivityManager({
     return clients.find((client) => client.id === clientId);
   };
 
+  // Função auxiliar para obter a cor baseada no status
+  const getStatusColor = (status: Activity["status"]) => {
+    if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
+    if (status === "doing") return "hsl(45, 93%, 47%)"; // Amarelo - Fazendo
+    if (status === "completed") return "hsl(142, 71%, 45%)"; // Verde - Feito
+    if (status === "waiting-client") return "hsl(25, 95%, 53%)"; // Laranja
+    if (status === "waiting-team") return "hsl(262, 83%, 58%)"; // Roxo
+    return "hsl(0, 0%, 50%)"; // Cinza padrão
+  };
+
   const handleSaveEdit = async () => {
     if (!selectedActivity || !editData.title.trim() || !editData.clientId || editData.selectedUsers.length === 0) {
       return;
@@ -962,7 +980,7 @@ export function ActivityManager({
                     isSelected ? "ring-2 ring-primary" : ""
                   )}
                   style={{
-                    borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                    borderLeftColor: getStatusColor(displayStatus),
                   }}
                   ref={isSelected ? selectedRef : undefined}
                 >
@@ -975,12 +993,6 @@ export function ActivityManager({
                             {activity.title}
                           </h3>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div
-                              className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
-                              style={{
-                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
-                              }}
-                            />
                             <span className="text-xs md:text-sm text-muted-foreground truncate">
                               {client.name}
                             </span>
@@ -1426,7 +1438,7 @@ export function ActivityManager({
                     key={activity.id}
                     className="p-4 transition border-l-4 bg-destructive/5"
                     style={{
-                      borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                      borderLeftColor: getStatusColor(displayStatus),
                     }}
                   >
                     <div className="space-y-3">
@@ -1434,12 +1446,6 @@ export function ActivityManager({
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold">{activity.title}</h3>
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{
-                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
-                              }}
-                            />
                             <span className="text-sm text-muted-foreground">
                               {client.name}
                             </span>
@@ -1742,7 +1748,7 @@ export function ActivityManager({
                     key={activity.id}
                     className="p-4 transition border-l-4"
                     style={{
-                      borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                      borderLeftColor: getStatusColor(displayStatus),
                     }}
                   >
                     <div className="space-y-3">
@@ -1750,12 +1756,6 @@ export function ActivityManager({
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold">{activity.title}</h3>
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{
-                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
-                              }}
-                            />
                             <span className="text-sm text-muted-foreground">
                               {client.name}
                             </span>
@@ -2054,7 +2054,7 @@ export function ActivityManager({
                     key={activity.id}
                     className="p-4 transition border-l-4"
                     style={{
-                      borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                      borderLeftColor: getStatusColor(activity.status),
                     }}
                   >
                     <div className="space-y-3">
@@ -2062,12 +2062,6 @@ export function ActivityManager({
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold">{activity.title}</h3>
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{
-                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
-                              }}
-                            />
                             <span className="text-sm text-muted-foreground">
                               {client.name}
                             </span>
@@ -2244,7 +2238,7 @@ export function ActivityManager({
                     key={activity.id}
                     className="p-4 transition border-l-4"
                     style={{
-                      borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                      borderLeftColor: getStatusColor(activity.status),
                     }}
                   >
                     <div className="space-y-3">
@@ -2255,12 +2249,6 @@ export function ActivityManager({
                             <Badge variant="secondary" className="text-xs">
                               ↔️ {recurrenceInfo}
                             </Badge>
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{
-                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
-                              }}
-                            />
                             <span className="text-sm text-muted-foreground">
                               {client.name}
                             </span>
@@ -2405,25 +2393,102 @@ export function ActivityManager({
 
               <div className="space-y-2">
                 <Label htmlFor="client">Cliente*</Label>
-                <Select
-                  value={formData.clientId}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, clientId: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o cliente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients
-                      .filter((c) => c.isActive)
-                      .map((client) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
+                {!showNewClientForm ? (
+                  <div className="flex gap-2">
+                    <Select
+                      value={formData.clientId}
+                      onValueChange={(value) => {
+                        if (value === "__new__") {
+                          setShowNewClientForm(true);
+                        } else {
+                          setFormData((prev) => ({ ...prev, clientId: value }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o cliente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clients
+                          .filter((c) => c.isActive)
+                          .map((client) => (
+                            <SelectItem key={client.id} value={client.id}>
+                              {client.name}
+                            </SelectItem>
+                          ))}
+                        <SelectItem value="__new__" className="font-semibold text-primary">
+                          + Cadastrar novo cliente
                         </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-3 border rounded-md bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold">Novo Cliente</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowNewClientForm(false);
+                          setNewClientName("");
+                        }}
+                        className="h-6 px-2"
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                    <Input
+                      placeholder="Nome do cliente"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newClientName.trim() && onCreateClient) {
+                          e.preventDefault();
+                          // Criar o cliente
+                          const usedColors = clients.map(c => c.colorIndex || 1);
+                          let nextColor = 1;
+                          while (usedColors.includes(nextColor) && nextColor <= 10) {
+                            nextColor++;
+                          }
+                          onCreateClient({
+                            name: newClientName.trim(),
+                            colorIndex: nextColor <= 10 ? nextColor : 1,
+                            notes: "",
+                            isActive: true,
+                          });
+                          setShowNewClientForm(false);
+                          setNewClientName("");
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (newClientName.trim() && onCreateClient) {
+                          // Criar o cliente
+                          const usedColors = clients.map(c => c.colorIndex || 1);
+                          let nextColor = 1;
+                          while (usedColors.includes(nextColor) && nextColor <= 10) {
+                            nextColor++;
+                          }
+                          onCreateClient({
+                            name: newClientName.trim(),
+                            colorIndex: nextColor <= 10 ? nextColor : 1,
+                            notes: "",
+                            isActive: true,
+                          });
+                          setShowNewClientForm(false);
+                          setNewClientName("");
+                        }
+                      }}
+                      disabled={!newClientName.trim()}
+                      className="w-full"
+                    >
+                      Criar Cliente
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2723,22 +2788,100 @@ export function ActivityManager({
                   {/* Cliente */}
                   <div className="space-y-2">
                     <Label htmlFor="edit-client">Cliente</Label>
-                    <Select 
-                      value={editData.clientId} 
-                      onValueChange={(value) => setEditData(prev => ({ ...prev, clientId: value }))}
-                    >
-                      <SelectTrigger id="edit-client">
-                        <SelectValue placeholder="Selecione o cliente" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clients.filter(c => c.isActive).map((client) => (
-                          <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {!showNewClientForm ? (
+                      <div className="flex gap-2">
+                        <Select 
+                          value={editData.clientId} 
+                          onValueChange={(value) => {
+                            if (value === "__new__") {
+                              setShowNewClientForm(true);
+                            } else {
+                              setEditData(prev => ({ ...prev, clientId: value }));
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="edit-client">
+                            <SelectValue placeholder="Selecione o cliente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clients.filter(c => c.isActive).map((client) => (
+                              <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                            ))}
+                            <SelectItem value="__new__" className="font-semibold text-primary">
+                              + Cadastrar novo cliente
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 p-3 border rounded-md bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-semibold">Novo Cliente</Label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowNewClientForm(false);
+                              setNewClientName("");
+                            }}
+                            className="h-6 px-2"
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                        <Input
+                          placeholder="Nome do cliente"
+                          value={newClientName}
+                          onChange={(e) => setNewClientName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newClientName.trim() && onCreateClient) {
+                              e.preventDefault();
+                              // Criar o cliente
+                              const usedColors = clients.map(c => c.colorIndex || 1);
+                              let nextColor = 1;
+                              while (usedColors.includes(nextColor) && nextColor <= 10) {
+                                nextColor++;
+                              }
+                              onCreateClient({
+                                name: newClientName.trim(),
+                                colorIndex: nextColor <= 10 ? nextColor : 1,
+                                notes: "",
+                                isActive: true,
+                              });
+                              setShowNewClientForm(false);
+                              setNewClientName("");
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (newClientName.trim() && onCreateClient) {
+                              // Criar o cliente
+                              const usedColors = clients.map(c => c.colorIndex || 1);
+                              let nextColor = 1;
+                              while (usedColors.includes(nextColor) && nextColor <= 10) {
+                                nextColor++;
+                              }
+                              onCreateClient({
+                                name: newClientName.trim(),
+                                colorIndex: nextColor <= 10 ? nextColor : 1,
+                                notes: "",
+                                isActive: true,
+                              });
+                              setShowNewClientForm(false);
+                              setNewClientName("");
+                            }
+                          }}
+                          disabled={!newClientName.trim()}
+                          className="w-full"
+                        >
+                          Criar Cliente
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  
-                  {/* Data */}
+
                   <div className="space-y-2">
                     <Label>Data</Label>
                     <Popover>
@@ -2759,8 +2902,7 @@ export function ActivityManager({
                       </PopoverContent>
                     </Popover>
                   </div>
-                  
-                  {/* Responsável Principal */}
+
                   <div className="space-y-2">
                     <Label htmlFor="edit-assignee">Responsável Principal</Label>
                     <Select 

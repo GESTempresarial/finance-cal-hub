@@ -3,14 +3,12 @@ import { User } from '@/types';
 import { Calendar } from './Calendar';
 import { ActivityManager } from './ActivityManager';
 import { ClientManager } from './ClientManager';
-import { ClientLegend } from './ClientLegend';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, Calendar as CalendarIcon, Activity, Users, Menu, X } from 'lucide-react';
+import { LogOut, Calendar as CalendarIcon, Activity, Users } from 'lucide-react';
 import { useActivities } from '@/hooks/useActivities';
 import { useClients } from '@/hooks/useClients';
 import { useTimers } from '@/hooks/useTimers';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 
 interface MainLayoutProps {
@@ -28,7 +26,6 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [createDate, setCreateDate] = useState<Date | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Função para abrir o formulário e trocar para a aba de atividades
   const handleOpenCreateActivity = () => {
@@ -84,18 +81,6 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
       <header className="border-b bg-card shadow-soft">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-2 md:gap-4">
-            {/* Botão de menu mobile */}
-            <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-4">
-                <ClientLegend clients={clients} />
-              </SheetContent>
-            </Sheet>
-            
             <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/60 rounded-xl flex items-center justify-center shrink-0">
               <CalendarIcon className="w-5 h-5 text-white" />
             </div>
@@ -115,14 +100,9 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
       </header>
 
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar - Desktop only */}
-        <aside className="hidden md:block w-72 border-r bg-card p-4 overflow-y-auto">
-          <ClientLegend clients={clients} />
-        </aside>
-
+      <div className="h-[calc(100vh-73px)]">
         {/* Content Area */}
-        <main className="flex-1 overflow-auto">
+        <main className="h-full overflow-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <TabsList className="grid w-full grid-cols-3 mx-2 md:mx-6 mt-2 md:mt-6">
               <TabsTrigger value="calendar" className="gap-1 md:gap-2 text-xs md:text-sm">
@@ -167,6 +147,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                   currentUser={currentUser}
                   users={users}
                   onCreateActivity={createActivity}
+                  onCreateClient={createClient}
                   onUpdateActivity={updateActivity}
                   onDeleteActivity={deleteActivity}
                   onStatusChange={updateActivityStatus}

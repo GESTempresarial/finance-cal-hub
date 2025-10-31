@@ -25,6 +25,16 @@ export function ActivityCard({
   const isOverdue = new Date(activity.date) < new Date() && activity.status !== 'completed';
   const isShortTask = activity.estimatedDuration <= 30;
   
+  // Função auxiliar para obter a cor baseada no status
+  const getStatusColor = (status: Activity["status"]) => {
+    if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
+    if (status === "doing") return "hsl(45, 93%, 47%)"; // Amarelo - Fazendo
+    if (status === "completed") return "hsl(142, 71%, 45%)"; // Verde - Feito
+    if (status === "waiting-client") return "hsl(25, 95%, 53%)"; // Laranja
+    if (status === "waiting-team") return "hsl(262, 83%, 58%)"; // Roxo
+    return "hsl(0, 0%, 50%)"; // Cinza padrão
+  };
+  
   const handleStatusClick = () => {
     const statuses: Activity['status'][] = ['pending', 'doing', 'waiting-client', 'waiting-team', 'completed'];
     const currentIndex = statuses.indexOf(activity.status);
@@ -49,7 +59,7 @@ export function ActivityCard({
         activity.status === 'completed' && "opacity-75"
       )}
       style={{
-        borderLeftColor: `hsl(var(--client-${client.colorIndex}))`
+        borderLeftColor: getStatusColor(activity.status)
       }}
     >
       <div className="space-y-2">
