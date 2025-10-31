@@ -103,7 +103,8 @@ export function ActivityManager({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [showRecurring, setShowRecurring] = useState(false); // Estado para mostrar/ocultar recorrentes
-  const [showPending, setShowPending] = useState(false); // Estado para mostrar/ocultar pendentes
+  const [showOverdue, setShowOverdue] = useState(true); // Estado para mostrar/ocultar vencidas (aberto por padrão)
+  const [showUpcoming, setShowUpcoming] = useState(false); // Estado para mostrar/ocultar próximas
   const [showCompleted, setShowCompleted] = useState(false); // Estado para mostrar/ocultar concluídas
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(
     new Set()
@@ -581,12 +582,14 @@ export function ActivityManager({
   today.setHours(0, 0, 0, 0);
   const {
     todayActivities,
-    pendingActivities,
+    overdueActivities,
+    upcomingActivities,
     completedActivities,
     recurringActivities,
   } = useMemo(() => {
     const todayList: Activity[] = [];
-    const pending: Activity[] = [];
+    const overdue: Activity[] = [];
+    const upcoming: Activity[] = [];
     const completed: Activity[] = [];
     const recurring: Activity[] = [];
 
@@ -640,18 +643,23 @@ export function ActivityManager({
       if (baseDate.getTime() === today.getTime()) {
         todayList.push(a);
       } else {
-        // Separar em pendentes e concluídas
+        // Separar em vencidas, próximas e concluídas
         if (a.status === "completed") {
           completed.push(a);
+        } else if (baseDate < today) {
+          // Vencidas: data anterior a hoje e não concluída
+          overdue.push(a);
         } else {
-          pending.push(a);
+          // Próximas: data futura e não concluída
+          upcoming.push(a);
         }
       }
     });
 
     return {
       todayActivities: todayList,
-      pendingActivities: pending,
+      overdueActivities: overdue,
+      upcomingActivities: upcoming,
       completedActivities: completed,
       recurringActivities: recurring,
     };
@@ -1387,27 +1395,347 @@ export function ActivityManager({
         {/* Divisor */}
         <div className="h-px bg-border" />
 
-        {/* Atividades Pendentes */}
+        {/* Atividades Vencidas */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-muted-foreground">
-              Atividades Pendentes ({pendingActivities.length})
+            <h3 className="text-sm font-semibold text-destructive">
+              ⚠️ Atividades Vencidas ({overdueActivities.length})
             </h3>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowPending(!showPending)}
+              onClick={() => setShowOverdue(!showOverdue)}
               className="h-8"
             >
-              {showPending ? "▼ Ocultar" : "▶ Mostrar"}
+              {showOverdue ? "▼ Ocultar" : "▶ Mostrar"}
             </Button>
           </div>
 
-          {showPending && (
+          {showOverdue && (
             <div className="grid gap-4">
-              {pendingActivities.map((activity) => {
+              {overdueActivities.map((activity) => {
                 const client = getClientById(activity.clientId);
                 if (!client) return null;
+
+                const isRunning = isTimerRunning(activity.id);
+                const timerSeconds = activeTimers.get(activity.id) || 0;
+                const displayStatus = activity.status;
+
+                return (
+                  <Card
+                    key={activity.id}
+                    className="p-4 transition border-l-4 bg-destructive/5"
+                    style={{
+                      borderLeftColor: `hsl(var(--client-${client.colorIndex}))`,
+                    }}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold">{activity.title}</h3>
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{
+                                backgroundColor: `hsl(var(--client-${client.colorIndex}))`,
+                              }}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {client.name}
+                            </span>
+                            <Badge
+                              variant="destructive"
+                              className="text-xs ml-auto"
+                            >
+                              {STATUS_LABELS[activity.status]}
+                            </Badge>
+                          </div>
+
+                          {/* Botão para expandir/colapsar descrição */}
+                          {activity.description &&
+                            activity.description
+                              .replace(/\n?<recurrence>(.*?)<\/recurrence>/, "")
+                              .trim() && (
+                              <div className="mt-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleDescription(activity.id)}
+                                  className="h-7 px-2 text-xs mb-1"
+                                >
+                                  {expandedDescriptions.has(activity.id)
+                                    ? "▼ Ocultar Descrição"
+                                    : "▶ Mostrar Descrição"}
+                                </Button>
+
+                                {expandedDescriptions.has(activity.id) && (
+                                  <InlineRichTextView
+                                    content={activity.description
+                                      .replace(
+                                        /\n?<recurrence>(.*?)<\/recurrence>/,
+                                        ""
+                                      )
+                                      .trim()}
+                                    onChange={(html) => {
+                                      const recurrenceMatch =
+                                        activity.description?.match(
+                                          /<recurrence>(.*?)<\/recurrence>/
+                                        );
+                                      const newDescription = recurrenceMatch
+                                        ? `${html}\n<recurrence>${recurrenceMatch[1]}</recurrence>`
+                                        : html;
+                                      onUpdateActivity(activity.id, {
+                                        description: newDescription,
+                                      });
+                                    }}
+                                    editable={true}
+                                    placeholder="Clique para adicionar descrição..."
+                                  />
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pt-2 border-t">
+                        <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
+                          <span className="text-destructive font-medium">
+                            📅 {format(new Date(activity.date), "dd/MM/yyyy", {
+                              locale: ptBR,
+                            })}
+                          </span>
+                          <span>
+                            ⏱️ {activity.estimatedDuration} min estimado
+                          </span>
+                          {displayStatus === "completed" &&
+                            activity.actualDuration && (
+                              <span className="text-green-600 font-medium">
+                                ✅ {activity.actualDuration} min realizado
+                              </span>
+                            )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1 md:gap-2">
+                          {/* Timer display */}
+                          {(displayStatus === "doing" || isRunning) && (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded text-sm font-mono">
+                              <Clock className="w-3 h-3" />
+                              {formatTimer(timerSeconds)}
+                            </div>
+                          )}
+
+                          {/* Botões de ação baseados no status */}
+                          {displayStatus === "pending" && (
+                            <Button
+                              size="sm"
+                              onClick={() => startActivityTimer(activity.id)}
+                              className="gap-1"
+                            >
+                              <Play className="w-3 h-3" />
+                              Iniciar
+                            </Button>
+                          )}
+
+                          {displayStatus === "doing" && (
+                            <>
+                              {isRunning ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => pauseActivityTimer(activity.id)}
+                                  className="gap-1"
+                                >
+                                  <Pause className="w-3 h-3" />
+                                  Pausar
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    if (timersHook) {
+                                      timersHook.startTimer(activity.id);
+                                    }
+                                  }}
+                                  className="gap-1"
+                                >
+                                  <Play className="w-3 h-3" />
+                                  Retomar
+                                </Button>
+                              )}
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  pauseActivityTimer(activity.id);
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "waiting-client"
+                                  );
+                                }}
+                                className="gap-1"
+                                title="Aguardando Cliente"
+                              >
+                                <UserX className="w-3 h-3" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  pauseActivityTimer(activity.id);
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "waiting-team"
+                                  );
+                                }}
+                                className="gap-1"
+                                title="Aguardando Equipe"
+                              >
+                                <Users className="w-3 h-3" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "completed"
+                                  );
+                                }}
+                                className="gap-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Concluir
+                              </Button>
+                            </>
+                          )}
+
+                          {(displayStatus === "waiting-client" ||
+                            displayStatus === "waiting-team") && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  onStatusChange(activity.id, "doing");
+                                  if (timersHook) {
+                                    timersHook.startTimer(activity.id);
+                                  }
+                                }}
+                                className="gap-1"
+                              >
+                                <Play className="w-3 h-3" />
+                                Retomar
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "completed"
+                                  );
+                                }}
+                                className="gap-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Concluir
+                              </Button>
+                            </>
+                          )}
+
+                          {displayStatus === "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                changeActivityStatus(activity.id, "pending");
+                              }}
+                              className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
+                              title="Reverter conclusão"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reabrir
+                            </Button>
+                          )}
+
+                          {/* Botões de editar e excluir */}
+                          <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => onSelectActivity?.(activity.id)}
+                              className="gap-1 h-8 px-2"
+                              title="Editar atividade"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "Deseja realmente excluir esta atividade?"
+                                  )
+                                ) {
+                                  pauseActivityTimer(activity.id);
+                                  onDeleteActivity(activity.id);
+                                }
+                              }}
+                              className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                              title="Excluir atividade"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+              {overdueActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Sem atividades vencidas.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divisor */}
+        <div className="h-px bg-border" />
+
+        {/* Próximas Atividades */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              📅 Próximas Atividades ({upcomingActivities.length})
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowUpcoming(!showUpcoming)}
+              className="h-8"
+            >
+              {showUpcoming ? "▼ Ocultar" : "▶ Mostrar"}
+            </Button>
+          </div>
+
+          {showUpcoming && (
+            <div className="grid gap-4">
+              {upcomingActivities.map((activity) => {
+                const client = getClientById(activity.clientId);
+                if (!client) return null;
+
+                const isRunning = isTimerRunning(activity.id);
+                const timerSeconds = activeTimers.get(activity.id) || 0;
+                const displayStatus = activity.status;
 
                 return (
                   <Card
@@ -1465,7 +1793,6 @@ export function ActivityManager({
                                       )
                                       .trim()}
                                     onChange={(html) => {
-                                      // Preservar metadados de recorrência ao atualizar
                                       const recurrenceMatch =
                                         activity.description?.match(
                                           /<recurrence>(.*?)<\/recurrence>/
@@ -1486,56 +1813,211 @@ export function ActivityManager({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-4 pt-2 border-t">
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pt-2 border-t">
+                        <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
                           <span>
-                            📅{" "}
-                            {format(new Date(activity.date), "dd/MM/yyyy", {
+                            📅 {format(new Date(activity.date), "dd/MM/yyyy", {
                               locale: ptBR,
                             })}
                           </span>
                           <span>
                             ⏱️ {activity.estimatedDuration} min estimado
                           </span>
+                          {displayStatus === "completed" &&
+                            activity.actualDuration && (
+                              <span className="text-green-600 font-medium">
+                                ✅ {activity.actualDuration} min realizado
+                              </span>
+                            )}
                         </div>
 
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onSelectActivity?.(activity.id)}
-                            className="gap-1 h-8 px-2"
-                            title="Editar atividade"
-                          >
-                            <Edit className="w-3 h-3" />
-                          </Button>
+                        <div className="flex flex-wrap items-center gap-1 md:gap-2">
+                          {/* Timer display */}
+                          {(displayStatus === "doing" || isRunning) && (
+                            <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded text-sm font-mono">
+                              <Clock className="w-3 h-3" />
+                              {formatTimer(timerSeconds)}
+                            </div>
+                          )}
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  "Deseja realmente excluir esta atividade?"
-                                )
-                              ) {
-                                onDeleteActivity(activity.id);
-                              }
-                            }}
-                            className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
-                            title="Excluir atividade"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+                          {/* Botões de ação baseados no status */}
+                          {displayStatus === "pending" && (
+                            <Button
+                              size="sm"
+                              onClick={() => startActivityTimer(activity.id)}
+                              className="gap-1"
+                            >
+                              <Play className="w-3 h-3" />
+                              Iniciar
+                            </Button>
+                          )}
+
+                          {displayStatus === "doing" && (
+                            <>
+                              {isRunning ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => pauseActivityTimer(activity.id)}
+                                  className="gap-1"
+                                >
+                                  <Pause className="w-3 h-3" />
+                                  Pausar
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    if (timersHook) {
+                                      timersHook.startTimer(activity.id);
+                                    }
+                                  }}
+                                  className="gap-1"
+                                >
+                                  <Play className="w-3 h-3" />
+                                  Retomar
+                                </Button>
+                              )}
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  pauseActivityTimer(activity.id);
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "waiting-client"
+                                  );
+                                }}
+                                className="gap-1"
+                                title="Aguardando Cliente"
+                              >
+                                <UserX className="w-3 h-3" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  pauseActivityTimer(activity.id);
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "waiting-team"
+                                  );
+                                }}
+                                className="gap-1"
+                                title="Aguardando Equipe"
+                              >
+                                <Users className="w-3 h-3" />
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "completed"
+                                  );
+                                }}
+                                className="gap-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Concluir
+                              </Button>
+                            </>
+                          )}
+
+                          {(displayStatus === "waiting-client" ||
+                            displayStatus === "waiting-team") && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  onStatusChange(activity.id, "doing");
+                                  if (timersHook) {
+                                    timersHook.startTimer(activity.id);
+                                  }
+                                }}
+                                className="gap-1"
+                              >
+                                <Play className="w-3 h-3" />
+                                Retomar
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  changeActivityStatus(
+                                    activity.id,
+                                    "completed"
+                                  );
+                                }}
+                                className="gap-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Concluir
+                              </Button>
+                            </>
+                          )}
+
+                          {displayStatus === "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                changeActivityStatus(activity.id, "pending");
+                              }}
+                              className="gap-1 border-green-600 text-green-600 hover:bg-green-50"
+                              title="Reverter conclusão"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reabrir
+                            </Button>
+                          )}
+
+                          {/* Botões de editar e excluir */}
+                          <div className="flex items-center gap-1 ml-2 pl-2 border-l">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => onSelectActivity?.(activity.id)}
+                              className="gap-1 h-8 px-2"
+                              title="Editar atividade"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "Deseja realmente excluir esta atividade?"
+                                  )
+                                ) {
+                                  pauseActivityTimer(activity.id);
+                                  onDeleteActivity(activity.id);
+                                }
+                              }}
+                              className="gap-1 h-8 px-2 text-destructive hover:text-destructive"
+                              title="Excluir atividade"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </Card>
                 );
               })}
-              {pendingActivities.length === 0 && (
+              {upcomingActivities.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sem atividades pendentes.
+                  Sem próximas atividades.
                 </p>
               )}
             </div>
