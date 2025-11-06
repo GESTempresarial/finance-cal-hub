@@ -139,7 +139,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                 />
               </TabsContent>
 
-              <TabsContent value="activities" forceMount className="h-full m-0 p-2 md:p-6">
+              <TabsContent value="activities" forceMount className="h-full m-0 p-2 md:p-6 data-[state=inactive]:hidden data-[state=inactive]:pointer-events-none">
                 <ActivityManager
                   activities={activities}
                   clients={clients}

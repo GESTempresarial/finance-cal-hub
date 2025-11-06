@@ -156,21 +156,21 @@ All colors MUST be HSL.
   cursor: grabbing;
 }
 
-.week-scrollable {
+.calendar-scrollable {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground)) transparent;
 }
 
-.week-scrollable::-webkit-scrollbar {
+.calendar-scrollable::-webkit-scrollbar {
   width: 6px;
 }
 
-.week-scrollable::-webkit-scrollbar-track {
+.calendar-scrollable::-webkit-scrollbar-track {
   background: hsl(var(--muted) / 0.2);
   border-radius: 9999px;
 }
 
-.week-scrollable::-webkit-scrollbar-thumb {
+.calendar-scrollable::-webkit-scrollbar-thumb {
   background: hsl(var(--muted-foreground) / 0.4);
   border-radius: 9999px;
 }
@@ -386,4 +386,35 @@ All colors MUST be HSL.
 .inline-rich-text-view .ProseMirror p.is-editor-empty:first-child::before {
   color: hsl(var(--muted-foreground) / 0.5);
   font-style: italic;
+}
+
+/* Drag and Drop Styles for Calendar */
+.dragging-over {
+  background-color: hsl(var(--primary) / 0.05) !important;
+  transition: background-color 0.15s ease;
+}
+
+.drop-indicator {
+  height: 2px;
+  background-color: hsl(var(--primary));
+  border-radius: 9999px;
+  animation: pulse-drop 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-drop {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 8px 2px hsl(var(--primary) / 0.3);
+  }
+}
+
+/* Animação de arraste do card */
+.dragging-card {
+  opacity: 0.5 !important;
+  transform: scale(0.98);
+  transition: opacity 0.2s, transform 0.2s;
 }

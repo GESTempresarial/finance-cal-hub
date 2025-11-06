@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Activity, Client, STATUS_LABELS, User } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -50,6 +50,9 @@ export function Calendar({
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('week');
+  const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
+  const [draggedInfo, setDraggedInfo] = useState<{ id: string; dateKey: string } | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ targetId: string; position: 'before' | 'after' } | null>(null);
   
   // Estado para edição de atividade
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -201,7 +204,7 @@ export function Calendar({
     setEditingActivity(null);
   };
 
-  const getActivitiesForDay = (day: Date) => {
+  const getBaseActivitiesForDay = (day: Date) => {
     const dayStart = new Date(day);
     dayStart.setHours(0,0,0,0);
 
@@ -236,6 +239,70 @@ export function Calendar({
       return isSameDay(start, dayStart);
     });
   };
+
+  const getDateKey = (date: Date) => format(new Date(date), 'yyyy-MM-dd');
+
+  const buildOrderForDay = (day: Date, existingOrder?: string[]) => {
+    const baseActivities = getBaseActivitiesForDay(day);
+    const baseMap = new Map(baseActivities.map((activity) => [activity.id, activity]));
+    const filteredOrder = existingOrder?.filter((id) => baseMap.has(id)) ?? [];
+    const baseIds = baseActivities.map((activity) => activity.id);
+    const finalIds = [...filteredOrder, ...baseIds.filter((id) => !filteredOrder.includes(id))];
+    const orderedActivities = finalIds
+      .map((id) => baseMap.get(id))
+      .filter((activity): activity is Activity => Boolean(activity));
+
+    return {
+      baseActivities,
+      baseIds,
+      finalIds,
+      orderedActivities,
+    };
+  };
+
+  const getOrderedActivitiesForDay = (day: Date) => {
+    const dateKey = getDateKey(day);
+    const { orderedActivities } = buildOrderForDay(day, customOrder[dateKey]);
+    return orderedActivities;
+  };
+
+  const handleReorderWithinDay = (targetActivityId: string, day: Date, position: 'before' | 'after') => {
+    if (!draggedInfo) return;
+    const dateKey = getDateKey(day);
+    if (draggedInfo.dateKey !== dateKey || draggedInfo.id === targetActivityId) return;
+
+    setCustomOrder((prev) => {
+      const { finalIds } = buildOrderForDay(day, prev[dateKey]);
+      if (!finalIds.includes(draggedInfo.id) || !finalIds.includes(targetActivityId)) {
+        return prev;
+      }
+
+      const reordered = finalIds.filter((id) => id !== draggedInfo.id);
+      const targetIndex = reordered.indexOf(targetActivityId);
+      if (targetIndex === -1) return prev;
+      
+      // Inserir antes ou depois da tarefa alvo
+      const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+      reordered.splice(insertIndex, 0, draggedInfo.id);
+
+      return { ...prev, [dateKey]: reordered };
+    });
+  };
+
+  useEffect(() => {
+    setCustomOrder((prev) => {
+      const updated: Record<string, string[]> = {};
+      Object.entries(prev).forEach(([key, order]) => {
+        const parsedDate = parseISO(key);
+        if (Number.isNaN(parsedDate.getTime())) return;
+        const { finalIds } = buildOrderForDay(parsedDate, order);
+        if (finalIds.length) {
+          updated[key] = finalIds;
+        }
+      });
+      return updated;
+    });
+  }, [activities]);
 
   const getClientById = (clientId: string) => {
     return clients.find(client => client.id === clientId);
@@ -312,7 +379,9 @@ export function Calendar({
           : 'grid grid-cols-7'
       )}>
         {days.map((day) => {
-          const dayActivities = getActivitiesForDay(day);
+          const dayActivities = getOrderedActivitiesForDay(day);
+          const maxVisible = view === 'month' ? 5 : 3;
+          const showScrollHint = dayActivities.length > maxVisible;
           const isCurrentMonth = view === 'month' ? isSameMonth(day, currentDate) : true;
           
           return (
@@ -320,19 +389,53 @@ export function Calendar({
               key={day.toISOString()}
               className={cn(
                 'border-r border-b p-1 md:p-2 flex flex-col relative',
-                view === 'month' && 'min-h-[80px] md:min-h-[120px] overflow-y-auto',
+                view === 'month' && 'min-h-[80px] md:min-h-[120px]',
                 !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
                 isToday(day) && 'bg-primary/5 border-primary/20'
               )}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
+                e.preventDefault();
                 const activityId = e.dataTransfer.getData('text/plain');
                 if (!activityId) return;
                 const act = activities.find(a => a.id === activityId);
                 if (!act) return;
                 if (act.isRecurring) return; // por ora, não mover recorrentes
-                // Atualiza data no banco
-                onUpdateActivity?.(activityId, { date: new Date(day) });
+                const targetDate = new Date(day);
+                targetDate.setHours(0, 0, 0, 0);
+                const targetDateKey = getDateKey(targetDate);
+                const originalDate = new Date(act.date);
+                originalDate.setHours(0, 0, 0, 0);
+                const originalDateKey = getDateKey(originalDate);
+
+                if (originalDateKey === targetDateKey) {
+                  if (draggedInfo?.id === activityId) {
+                    setCustomOrder((prev) => {
+                      const { finalIds } = buildOrderForDay(targetDate, prev[targetDateKey]);
+                      if (!finalIds.includes(activityId)) return prev;
+                      const reordered = finalIds.filter((id) => id !== activityId);
+                      reordered.push(activityId);
+                      return { ...prev, [targetDateKey]: reordered };
+                    });
+                  }
+                } else {
+                  onUpdateActivity?.(activityId, { date: targetDate });
+                  setCustomOrder((prev) => {
+                    const next = { ...prev };
+                    if (next[originalDateKey]) {
+                      const updatedOrigin = next[originalDateKey].filter((id) => id !== activityId);
+                      if (updatedOrigin.length) next[originalDateKey] = updatedOrigin;
+                      else delete next[originalDateKey];
+                    }
+                    const updatedTarget = (next[targetDateKey] || []).filter((id) => id !== activityId);
+                    updatedTarget.push(activityId);
+                    next[targetDateKey] = updatedTarget;
+                    return next;
+                  });
+                }
+
+                setDraggedInfo(null);
+                setDropIndicator(null);
               }}
               onClick={(e) => {
                 // Clique no fundo do dia (não em um card)
@@ -352,8 +455,8 @@ export function Calendar({
               <div
                 className={cn(
                   'space-y-1',
-                  view === 'week' && 'space-y-2 mt-1 flex-1 max-h-64 overflow-y-auto pr-1 pb-6 week-scrollable',
-                  view === 'month' && 'mt-1'
+                  view === 'week' && 'space-y-2 mt-1 flex-1 max-h-64 overflow-y-auto pr-1 pb-6 calendar-scrollable',
+                  view === 'month' && 'mt-1 flex-1 max-h-48 overflow-y-auto pr-1 pb-6 calendar-scrollable'
                 )}
               >
                 {dayActivities.map((activity) => {
@@ -370,56 +473,104 @@ export function Calendar({
                   // Determinar o status a ser exibido
                   const displayStatus = isCompletedOccurrence ? 'completed' : activity.status;
 
+                  // Verificar se está mostrando indicador de drop
+                  const showDropBefore = dropIndicator?.targetId === activity.id && dropIndicator?.position === 'before';
+                  const showDropAfter = dropIndicator?.targetId === activity.id && dropIndicator?.position === 'after';
+
                   return (
-                    <div
-                      key={activity.id}
-                      className={cn(
-                        'cursor-pointer rounded bg-card hover:bg-primary/10 flex border border-muted text-xs md:text-sm',
-                        view === 'week' ? 'px-2 py-1 md:py-2 flex-col gap-1' : 'px-1 md:px-2 py-0.5 md:py-1 items-center gap-1 md:gap-2'
+                    <div key={activity.id} className="relative">
+                      {/* Indicador de drop antes */}
+                      {showDropBefore && (
+                        <div className="h-0.5 bg-primary mb-1 rounded-full" />
                       )}
-                      title={activity.title}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        handleActivityClick(activity);
-                      }}
-                      draggable={!activity.isRecurring}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', activity.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      style={{
-                        borderLeftWidth: '3px',
-                        borderLeftColor: getStatusColor(displayStatus)
-                      }}
-                    >
-                      {view === 'week' ? (
-                        <>
-                          <div className="flex items-center gap-1 md:gap-2">
-                            <span className="truncate font-semibold text-xs md:text-sm flex-1">{activity.title}</span>
-                            {isCompletedOccurrence && <span className="text-xs md:text-sm">✔️</span>}
-                          </div>
-                          <span className="text-xs text-muted-foreground">{client.name}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="truncate font-medium text-xs flex-1">{activity.title}</span>
-                          <span className="text-xs">{isCompletedOccurrence ? '✔️' : ''}</span>
-                        </>
+                      
+                      <div
+                        className={cn(
+                          'cursor-pointer rounded bg-card hover:bg-primary/10 flex border border-muted text-xs md:text-sm transition-all',
+                          view === 'week' ? 'px-2 py-1 md:py-2 flex-col gap-1' : 'px-1 md:px-2 py-0.5 md:py-1 items-center gap-1 md:gap-2',
+                          draggedInfo?.id === activity.id && 'opacity-50'
+                        )}
+                        title={activity.title}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          handleActivityClick(activity);
+                        }}
+                        draggable={!activity.isRecurring}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', activity.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                          setDraggedInfo({ id: activity.id, dateKey: getDateKey(day) });
+                          setDropIndicator(null);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          
+                          if (!draggedInfo || draggedInfo.id === activity.id) return;
+                          
+                          // Calcular se está na metade superior ou inferior do card
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const mouseY = e.clientY;
+                          const cardMiddle = rect.top + rect.height / 2;
+                          const position = mouseY < cardMiddle ? 'before' : 'after';
+                          
+                          setDropIndicator({ targetId: activity.id, position });
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDropIndicator(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          
+                          if (!draggedInfo || draggedInfo.id === activity.id) return;
+                          
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const mouseY = e.clientY;
+                          const cardMiddle = rect.top + rect.height / 2;
+                          const position = mouseY < cardMiddle ? 'before' : 'after';
+                          
+                          handleReorderWithinDay(activity.id, day, position);
+                          setDropIndicator(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedInfo(null);
+                          setDropIndicator(null);
+                        }}
+                        style={{
+                          borderLeftWidth: '3px',
+                          borderLeftColor: getStatusColor(displayStatus)
+                        }}
+                      >
+                        {view === 'week' ? (
+                          <>
+                            <div className="flex items-center gap-1 md:gap-2">
+                              <span className="truncate font-semibold text-xs md:text-sm flex-1">{activity.title}</span>
+                              {isCompletedOccurrence && <span className="text-xs md:text-sm">✔️</span>}
+                            </div>
+                            <span className="text-xs text-muted-foreground">{client.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="truncate font-medium text-xs flex-1">{activity.title}</span>
+                            <span className="text-xs">{isCompletedOccurrence ? '✔️' : ''}</span>
+                          </>
+                        )}
+                      </div>
+                      
+                      {/* Indicador de drop depois */}
+                      {showDropAfter && (
+                        <div className="h-0.5 bg-primary mt-1 rounded-full" />
                       )}
                     </div>
                   );
                 })}
               </div>
 
-              {/* Workload Indicator */}
-              {view === 'month' && dayActivities.length > 3 && (
-                <div className="mt-1 text-xs text-center text-muted-foreground">
-                  +{dayActivities.length - 3} mais
-                </div>
-              )}
-
-              {view === 'week' && dayActivities.length > 3 && (
+              {showScrollHint && (
                 <div className="pointer-events-none absolute inset-x-1 bottom-0 z-10 flex flex-col items-stretch text-[10px] text-muted-foreground">
                   <div className="mx-auto mb-1 inline-flex items-center gap-1 rounded-full bg-muted/90 px-2 py-1 shadow-sm ring-1 ring-border/40">
                     <ChevronDown className="h-3 w-3" />
