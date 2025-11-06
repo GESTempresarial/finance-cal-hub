@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Activity } from '@/types';
+import { fireConfetti } from '@/lib/confetti';
 import { supabase } from '@/integrations/supabase/client';
 
 export function useActivities() {
@@ -10,6 +11,11 @@ export function useActivities() {
   const parseDateOnly = (s: string): Date => {
     const [y, m, d] = s.split('-').map(Number);
     return new Date(y, (m || 1) - 1, d || 1);
+  };
+  const normalizeStatus = (status: string | undefined): Activity['status'] => {
+    if (status === 'doing') return 'doing';
+    if (status === 'completed') return 'completed';
+    return 'pending';
   };
 
   useEffect(() => {
@@ -49,7 +55,7 @@ export function useActivities() {
         date: typeof item.date === 'string' ? parseDateOnly(item.date) : new Date(item.date),
         estimatedDuration: item.estimated_duration,
         actualDuration: item.actual_duration,
-        status: item.status as Activity['status'],
+        status: normalizeStatus(item.status),
         isRecurring: item.is_recurring,
         recurrenceType: item.recurrence_type as Activity['recurrenceType'],
         startedAt: item.started_at ? new Date(item.started_at) : undefined,
@@ -100,7 +106,7 @@ export function useActivities() {
   date: typeof data.date === 'string' ? parseDateOnly(data.date) : new Date(data.date),
         estimatedDuration: data.estimated_duration,
         actualDuration: data.actual_duration,
-        status: data.status as Activity['status'],
+        status: normalizeStatus(data.status),
         isRecurring: data.is_recurring,
         recurrenceType: data.recurrence_type as Activity['recurrenceType'],
         startedAt: data.started_at ? new Date(data.started_at) : undefined,
@@ -143,7 +149,12 @@ export function useActivities() {
       setActivities(prev => 
         prev.map(activity => 
           activity.id === id 
-            ? { ...activity, ...updates, updatedAt: new Date() }
+            ? { 
+                ...activity, 
+                ...updates, 
+                ...(updates.status ? { status: normalizeStatus(updates.status) } : {}), 
+                updatedAt: new Date() 
+              }
             : activity
         )
       );
@@ -154,6 +165,7 @@ export function useActivities() {
   };
 
   const updateActivityStatus = async (id: string, status: Activity['status']) => {
+    const previousStatus = activities.find(a => a.id === id)?.status;
     const updates: Partial<Activity> = { 
       status,
       updatedAt: new Date()
@@ -168,6 +180,10 @@ export function useActivities() {
     }
 
     await updateActivity(id, updates);
+
+    if (status === 'completed' && previousStatus !== 'completed') {
+      fireConfetti();
+    }
   };
 
   const deleteActivity = async (id: string) => {

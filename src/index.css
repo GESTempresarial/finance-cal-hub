@@ -53,8 +53,6 @@ All colors MUST be HSL.
     /* Status Colors */
     --status-pending: 0 84% 60%;      /* Red - A fazer */
     --status-doing: 45 93% 47%;       /* Yellow - Fazendo */
-    --status-waiting-client: 25 95% 53%; /* Orange */
-    --status-waiting-team: 262 83% 58%;  /* Purple */
     --status-completed: 142 71% 45%;  /* Green - Feito */
 
     /* Gradients */
@@ -156,6 +154,25 @@ All colors MUST be HSL.
 
 .drag-handle:active {
   cursor: grabbing;
+}
+
+.week-scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground)) transparent;
+}
+
+.week-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.week-scrollable::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.2);
+  border-radius: 9999px;
+}
+
+.week-scrollable::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.4);
+  border-radius: 9999px;
 }
 
 /* Estilos para o Rich Text Editor (Tiptap) */

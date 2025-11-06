@@ -34,8 +34,6 @@ import {
   Pause,
   CheckCircle,
   Clock,
-  Users,
-  UserX,
   Edit,
   Trash2,
   RotateCcw,
@@ -265,19 +263,15 @@ export function ActivityManager({
 
         // Status com ícone
         const statusLabels: Record<Activity["status"], string> = {
-          pending: "⏸ PENDENTE",
+          pending: "⏳ A FAZER",
           doing: currentIsRunning ? "▶ FAZENDO" : "⏸ PAUSADO",
-          completed: "✅ CONCLUÍDO",
-          "waiting-client": "👤 AGUARDANDO CLIENTE",
-          "waiting-team": "👥 AGUARDANDO EQUIPE",
+          completed: "✅ FEITO",
         };
 
         const statusColors: Record<Activity["status"], string> = {
-          pending: "#fbbf24",
-          doing: currentIsRunning ? "#22c55e" : "#fbbf24",
+          pending: "#f87171",
+          doing: currentIsRunning ? "#22c55e" : "#f59e0b",
           completed: "#22c55e",
-          "waiting-client": "#f59e0b",
-          "waiting-team": "#3b82f6",
         };
 
         const currentStatus = activity.status;
@@ -334,28 +328,6 @@ export function ActivityManager({
         ctx.fillStyle = "rgba(255,255,255,0.7)";
         ctx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
         ctx.fillText("Finalizar", rightStart + 75, yPos);
-
-        // Aguardar Cliente
-        yPos += lineHeight;
-        ctx.font = "13px -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillStyle = "#f59e0b";
-        ctx.fillRect(rightStart, yPos - 12, 4, 16);
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillText("Alt + C", rightStart + 10, yPos);
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillText("Ag. Cliente", rightStart + 75, yPos);
-
-        // Aguardar Equipe
-        yPos += lineHeight;
-        ctx.font = "13px -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillStyle = "#3b82f6";
-        ctx.fillRect(rightStart, yPos - 12, 4, 16);
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillText("Alt + T", rightStart + 10, yPos);
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillText("Ag. Equipe", rightStart + 75, yPos);
 
         // Editar
         yPos += lineHeight;
@@ -452,18 +424,6 @@ export function ActivityManager({
         changeActivityStatus(activityId, "completed");
       }
 
-      // Alt + C: Aguardar Cliente
-      if (e.altKey && e.code === "KeyC" && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        changeActivityStatus(activityId, "waiting-client");
-      }
-
-      // Alt + T: Aguardar Equipe
-      if (e.altKey && e.code === "KeyT" && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        changeActivityStatus(activityId, "waiting-team");
-      }
-
       // Alt + E: Editar
       if (e.altKey && e.code === "KeyE" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
@@ -484,7 +444,7 @@ export function ActivityManager({
     pauseActivityTimer(activityId);
     onStatusChange(activityId, newStatus);
 
-    // Se concluir, limpar timer e disparar confetes
+    // Se concluir, limpar timer e registrar tempo
     if (newStatus === "completed") {
       const timerSeconds = activeTimers.get(activityId) || 0;
       const actualMinutes = Math.ceil(timerSeconds / 60); // Converter para minutos
@@ -497,9 +457,6 @@ export function ActivityManager({
       if (timersHook) {
         timersHook.stopTimer(activityId);
       }
-
-      // 🎉 Disparar confetes!
-      fireConfetti();
     }
   };
 
@@ -822,8 +779,6 @@ export function ActivityManager({
     if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
     if (status === "doing") return "hsl(45, 93%, 47%)"; // Amarelo - Fazendo
     if (status === "completed") return "hsl(142, 71%, 45%)"; // Verde - Feito
-    if (status === "waiting-client") return "hsl(25, 95%, 53%)"; // Laranja
-    if (status === "waiting-team") return "hsl(262, 83%, 58%)"; // Roxo
     return "hsl(0, 0%, 50%)"; // Cinza padrão
   };
 
@@ -1133,52 +1088,6 @@ export function ActivityManager({
 
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                pauseActivityTimer(activity.id);
-                                if (!isRecurringOccurrence) {
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-client"
-                                  );
-                                } else {
-                                  // Para recorrente, atualizar o status mas manter os metadados
-                                  onUpdateActivity(activity.id, {
-                                    status: "waiting-client",
-                                  });
-                                }
-                              }}
-                              className="gap-1"
-                              title="Aguardando Cliente"
-                            >
-                              <UserX className="w-3 h-3" />
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                pauseActivityTimer(activity.id);
-                                if (!isRecurringOccurrence) {
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-team"
-                                  );
-                                } else {
-                                  // Para recorrente, atualizar o status mas manter os metadados
-                                  onUpdateActivity(activity.id, {
-                                    status: "waiting-team",
-                                  });
-                                }
-                              }}
-                              className="gap-1"
-                              title="Aguardando Equipe"
-                            >
-                              <Users className="w-3 h-3" />
-                            </Button>
-
-                            <Button
-                              size="sm"
                               variant="default"
                               onClick={() => {
                                 if (isRecurringOccurrence) {
@@ -1221,77 +1130,6 @@ export function ActivityManager({
                                     timersHook.stopTimer(activity.id);
                                   }
 
-                                  fireConfetti();
-                                } else {
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "completed"
-                                  );
-                                }
-                              }}
-                              className="gap-1 bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              Concluir
-                            </Button>
-                          </>
-                        )}
-
-                        {(displayStatus === "waiting-client" ||
-                          displayStatus === "waiting-team") && (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                // Sempre mudar o status de volta para 'doing' ao retomar
-                                if (isRecurringOccurrence) {
-                                  onUpdateActivity(activity.id, {
-                                    status: "doing",
-                                  });
-                                } else {
-                                  onStatusChange(activity.id, "doing");
-                                }
-                                // Iniciar o timer
-                                if (timersHook) {
-                                  timersHook.startTimer(activity.id);
-                                }
-                              }}
-                              className="gap-1"
-                            >
-                              <Play className="w-3 h-3" />
-                              Retomar
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => {
-                                if (isRecurringOccurrence) {
-                                  // Marcar esta ocorrência como concluída
-                                  pauseActivityTimer(activity.id);
-                                  const updatedCompletedDates = [
-                                    ...(meta.completedDates || []),
-                                    todayStr,
-                                  ];
-                                  const updatedMeta = {
-                                    ...meta,
-                                    completedDates: updatedCompletedDates,
-                                  };
-                                  const recurrenceBlock = `\n<recurrence>${JSON.stringify(
-                                    updatedMeta
-                                  )}</recurrence>`;
-                                  const cleanDesc =
-                                    activity.description
-                                      ?.replace(
-                                        /\n?<recurrence>(.*?)<\/recurrence>/,
-                                        ""
-                                      )
-                                      .trim() || "";
-                                  onUpdateActivity(activity.id, {
-                                    description:
-                                      `${cleanDesc}${recurrenceBlock}`.trim(),
-                                    status: "pending", // Resetar para pending para o próximo dia
-                                  });
                                   fireConfetti();
                                 } else {
                                   changeActivityStatus(
@@ -1572,72 +1410,6 @@ export function ActivityManager({
 
                               <Button
                                 size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  pauseActivityTimer(activity.id);
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-client"
-                                  );
-                                }}
-                                className="gap-1"
-                                title="Aguardando Cliente"
-                              >
-                                <UserX className="w-3 h-3" />
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  pauseActivityTimer(activity.id);
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-team"
-                                  );
-                                }}
-                                className="gap-1"
-                                title="Aguardando Equipe"
-                              >
-                                <Users className="w-3 h-3" />
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => {
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "completed"
-                                  );
-                                }}
-                                className="gap-1 bg-green-600 hover:bg-green-700"
-                              >
-                                <CheckCircle className="w-3 h-3" />
-                                Concluir
-                              </Button>
-                            </>
-                          )}
-
-                          {(displayStatus === "waiting-client" ||
-                            displayStatus === "waiting-team") && (
-                            <>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  onStatusChange(activity.id, "doing");
-                                  if (timersHook) {
-                                    timersHook.startTimer(activity.id);
-                                  }
-                                }}
-                                className="gap-1"
-                              >
-                                <Play className="w-3 h-3" />
-                                Retomar
-                              </Button>
-
-                              <Button
-                                size="sm"
                                 variant="default"
                                 onClick={() => {
                                   changeActivityStatus(
@@ -1879,72 +1651,6 @@ export function ActivityManager({
                                   Retomar
                                 </Button>
                               )}
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  pauseActivityTimer(activity.id);
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-client"
-                                  );
-                                }}
-                                className="gap-1"
-                                title="Aguardando Cliente"
-                              >
-                                <UserX className="w-3 h-3" />
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  pauseActivityTimer(activity.id);
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "waiting-team"
-                                  );
-                                }}
-                                className="gap-1"
-                                title="Aguardando Equipe"
-                              >
-                                <Users className="w-3 h-3" />
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => {
-                                  changeActivityStatus(
-                                    activity.id,
-                                    "completed"
-                                  );
-                                }}
-                                className="gap-1 bg-green-600 hover:bg-green-700"
-                              >
-                                <CheckCircle className="w-3 h-3" />
-                                Concluir
-                              </Button>
-                            </>
-                          )}
-
-                          {(displayStatus === "waiting-client" ||
-                            displayStatus === "waiting-team") && (
-                            <>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  onStatusChange(activity.id, "doing");
-                                  if (timersHook) {
-                                    timersHook.startTimer(activity.id);
-                                  }
-                                }}
-                                className="gap-1"
-                              >
-                                <Play className="w-3 h-3" />
-                                Retomar
-                              </Button>
 
                               <Button
                                 size="sm"

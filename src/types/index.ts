@@ -37,9 +37,7 @@ export interface Activity {
 
 export type ActivityStatus = 
   | 'pending'
-  | 'doing' 
-  | 'waiting-client'
-  | 'waiting-team'
+  | 'doing'
   | 'completed';
 
 export type RecurrenceType = 
@@ -59,17 +57,13 @@ export interface TimeLog {
 }
 
 export const STATUS_LABELS = {
-  pending: '🟡 Pendente',
-  doing: '🔵 Fazendo',
-  'waiting-client': '🟠 Aguardando Cliente',
-  'waiting-team': '🟣 Aguardando Equipe',
-  completed: '🟢 Concluído'
+  pending: 'A Fazer',
+  doing: 'Fazendo',
+  completed: 'Feito'
 } as const;
 
 export const STATUS_COLORS = {
   pending: 'status-pending',
   doing: 'status-doing',
-  'waiting-client': 'status-waiting-client',
-  'waiting-team': 'status-waiting-team',
   completed: 'status-completed'
 } as const;

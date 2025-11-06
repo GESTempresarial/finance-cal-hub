@@ -27,9 +27,8 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [createDate, setCreateDate] = useState<Date | null>(null);
 
-  // Função para abrir o formulário e trocar para a aba de atividades
+  // Função para abrir o formulário de criação a partir do calendário
   const handleOpenCreateActivity = () => {
-    setActiveTab('activities');
     setShowCreateActivity(true);
   };
 
@@ -39,10 +38,9 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
   };
 
   const handleDayCreate = (date: Date) => {
-    // Abrir aba de atividades com o formulário de criação
-    setActiveTab('activities');
+    // Abrir formulário de criação mantendo a visão atual
     setShowCreateActivity(true);
-  setCreateDate(date);
+    setCreateDate(date);
     // Poderíamos armazenar data pré-selecionada em estado global/contexto; por ora ActivityManager já inicia com hoje.
     // Extensão futura: passar via algum store ou prop.
   };
@@ -135,12 +133,13 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
                   activeTimers={activeTimers}
                   onCreateActivity={handleOpenCreateActivity}
                   onUpdateActivity={updateActivity}
+                  onDeleteActivity={deleteActivity}
                   onActivityClick={handleCalendarActivityClick}
                   onDayCreate={handleDayCreate}
                 />
               </TabsContent>
 
-              <TabsContent value="activities" className="h-full m-0 p-2 md:p-6">
+              <TabsContent value="activities" forceMount className="h-full m-0 p-2 md:p-6">
                 <ActivityManager
                   activities={activities}
                   clients={clients}

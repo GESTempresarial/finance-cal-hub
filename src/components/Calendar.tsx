@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Activity, Client, STATUS_LABELS, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ interface CalendarProps {
   onCreateActivity: () => void;
   onActivityClick?: (activityId: string) => void;
   onUpdateActivity?: (id: string, updates: Partial<Activity>) => void;
+  onDeleteActivity?: (id: string) => void;
   onDayCreate?: (date: Date) => void;
 }
 
@@ -44,6 +45,7 @@ export function Calendar({
   onCreateActivity,
   onActivityClick,
   onUpdateActivity,
+  onDeleteActivity,
   onDayCreate,
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -112,8 +114,6 @@ export function Calendar({
     if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
     if (status === "doing") return "hsl(45, 93%, 47%)"; // Amarelo - Fazendo
     if (status === "completed") return "hsl(142, 71%, 45%)"; // Verde - Feito
-    if (status === "waiting-client") return "hsl(25, 95%, 53%)"; // Laranja
-    if (status === "waiting-team") return "hsl(262, 83%, 58%)"; // Roxo
     return "hsl(0, 0%, 50%)"; // Cinza padrão
   };
 
@@ -190,6 +190,14 @@ export function Calendar({
       date: editData.date,
     });
     
+    setEditingActivity(null);
+  };
+
+  const handleDeleteActivity = () => {
+    if (!editingActivity || !onDeleteActivity) return;
+    const shouldDelete = window.confirm('Tem certeza que deseja excluir esta atividade?');
+    if (!shouldDelete) return;
+    onDeleteActivity(editingActivity.id);
     setEditingActivity(null);
   };
 
@@ -311,7 +319,7 @@ export function Calendar({
             <div
               key={day.toISOString()}
               className={cn(
-                'border-r border-b p-1 md:p-2',
+                'border-r border-b p-1 md:p-2 flex flex-col relative',
                 view === 'month' && 'min-h-[80px] md:min-h-[120px] overflow-y-auto',
                 !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
                 isToday(day) && 'bg-primary/5 border-primary/20'
@@ -341,7 +349,12 @@ export function Calendar({
               </div>
 
               {/* Activities */}
-              <div className={cn('space-y-1', view === 'week' && 'space-y-2')}
+              <div
+                className={cn(
+                  'space-y-1',
+                  view === 'week' && 'space-y-2 mt-1 flex-1 max-h-64 overflow-y-auto pr-1 pb-6 week-scrollable',
+                  view === 'month' && 'mt-1'
+                )}
               >
                 {dayActivities.map((activity) => {
                   const client = getClientById(activity.clientId);
@@ -400,9 +413,18 @@ export function Calendar({
               </div>
 
               {/* Workload Indicator */}
-              {dayActivities.length > 3 && (
+              {view === 'month' && dayActivities.length > 3 && (
                 <div className="mt-1 text-xs text-center text-muted-foreground">
                   +{dayActivities.length - 3} mais
+                </div>
+              )}
+
+              {view === 'week' && dayActivities.length > 3 && (
+                <div className="pointer-events-none absolute inset-x-1 bottom-0 z-10 flex flex-col items-stretch text-[10px] text-muted-foreground">
+                  <div className="mx-auto mb-1 inline-flex items-center gap-1 rounded-full bg-muted/90 px-2 py-1 shadow-sm ring-1 ring-border/40">
+                    <ChevronDown className="h-3 w-3" />
+                    Role para ver mais
+                  </div>
                 </div>
               )}
             </div>
@@ -661,8 +683,8 @@ export function Calendar({
               
               {/* Rodapé fixo com botões */}
               <div className="flex justify-end gap-2 px-6 py-4 border-t bg-background">
-                <Button variant="outline" onClick={() => setEditingActivity(null)}>
-                  Cancelar
+                <Button variant="destructive" onClick={handleDeleteActivity}>
+                  Excluir
                 </Button>
                 <Button onClick={handleSaveEdit}>
                   Salvar

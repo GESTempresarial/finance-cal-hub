@@ -1,7 +1,7 @@
 import { Activity, Client } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Play, Pause, CheckCircle, Users, UserX, X, Edit, Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
+import { Play, Pause, CheckCircle, X, Edit, Maximize2, Minimize2, PictureInPicture2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -95,22 +95,6 @@ export function FloatingTimer({
         e.preventDefault();
         onChangeStatus('completed');
         setLastAction('✅ Concluído');
-        setTimeout(() => setLastAction(''), 2000);
-      }
-      
-      // Alt + C: Aguardar Cliente
-      if (e.altKey && e.code === 'KeyC' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        onChangeStatus('waiting-client');
-        setLastAction('👤 Aguardar Cliente');
-        setTimeout(() => setLastAction(''), 2000);
-      }
-      
-      // Alt + T: Aguardar Equipe (Team)
-      if (e.altKey && e.code === 'KeyT' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        onChangeStatus('waiting-team');
-        setLastAction('👥 Aguardar Equipe');
         setTimeout(() => setLastAction(''), 2000);
       }
       
@@ -410,30 +394,8 @@ export function FloatingTimer({
                     </div>
 
                     {/* Linha 2: Status */}
-                    {(activity.status === 'doing' || activity.status === 'waiting-client' || activity.status === 'waiting-team') && (
+                    {activity.status === 'doing' && (
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onChangeStatus('waiting-client')}
-                          className="flex-1 gap-1"
-                          title="Aguardando Cliente"
-                        >
-                          <UserX className="w-3 h-3" />
-                          {sizeMode === 'large' && 'Cliente'}
-                        </Button>
-                        
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onChangeStatus('waiting-team')}
-                          className="flex-1 gap-1"
-                          title="Aguardando Equipe"
-                        >
-                          <Users className="w-3 h-3" />
-                          {sizeMode === 'large' && 'Equipe'}
-                        </Button>
-                        
                         <Button
                           size="sm"
                           variant="default"
@@ -473,8 +435,6 @@ export function FloatingTimer({
                         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                           <div><kbd className="px-1 py-0.5 bg-background rounded text-[10px] border">Alt P</kbd> Play/Pause</div>
                           <div><kbd className="px-1 py-0.5 bg-background rounded text-[10px] border">Alt F</kbd> Finalizar</div>
-                          <div><kbd className="px-1 py-0.5 bg-background rounded text-[10px] border">Alt C</kbd> Aguardar Cliente</div>
-                          <div><kbd className="px-1 py-0.5 bg-background rounded text-[10px] border">Alt T</kbd> Aguardar Equipe</div>
                           <div><kbd className="px-1 py-0.5 bg-background rounded text-[10px] border">Alt E</kbd> Editar</div>
                         </div>
                       </div>
