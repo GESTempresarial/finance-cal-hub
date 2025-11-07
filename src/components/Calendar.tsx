@@ -67,12 +67,13 @@ export function Calendar({
   }>({ title: '', description: '', status: 'pending', assignedTo: '', selectedUsers: [], clientId: '', date: new Date() });
   const [recurrenceEdit, setRecurrenceEdit] = useState<{
     enabled: boolean;
-    type: 'daily' | 'weekly';
+    type: 'daily' | 'weekly' | 'monthly';
     endDate: Date;
     weekDays: number[];
+    monthDay: number;
     completedDates: string[];
     includeWeekends: boolean;
-  }>({ enabled: false, type: 'daily', endDate: new Date(), weekDays: [], completedDates: [], includeWeekends: true });
+  }>({ enabled: false, type: 'daily', endDate: new Date(), weekDays: [], monthDay: new Date().getDate(), completedDates: [], includeWeekends: true });
 
   // Para visão mensal precisamos preencher a grade começando no domingo da primeira semana que contém o dia 1
   let periodStart: Date;
@@ -93,19 +94,20 @@ export function Calendar({
   }
 
   // Lê metadados de recorrência embutidos na descrição
-  const parseRecurrence = (activity: Activity): { type?: 'daily'|'weekly'; endDate?: Date; weekDays?: number[], completedDates?: string[], includeWeekends?: boolean } => {
-    const result: { type?: 'daily'|'weekly'; endDate?: Date; weekDays?: number[], completedDates?: string[], includeWeekends?: boolean } = {};
+  const parseRecurrence = (activity: Activity): { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean } => {
+    const result: { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean } = {};
     if (!activity.description) return result;
     const match = activity.description.match(/<recurrence>(.*?)<\/recurrence>/);
     if (!match) return result;
     try {
       const meta = JSON.parse(match[1]);
-      if (meta.type === 'daily' || meta.type === 'weekly') result.type = meta.type;
+      if (meta.type === 'daily' || meta.type === 'weekly' || meta.type === 'monthly') result.type = meta.type;
       if (meta.endDate) {
         const [y,m,d] = String(meta.endDate).split('-').map(Number);
         if (y && m && d) result.endDate = new Date(y, m-1, d);
       }
       if (Array.isArray(meta.weekDays)) result.weekDays = meta.weekDays as number[];
+      if (Array.isArray(meta.monthDays)) result.monthDays = meta.monthDays as number[];
       if (Array.isArray(meta.completedDates)) result.completedDates = meta.completedDates as string[];
       if (typeof meta.includeWeekends === 'boolean') result.includeWeekends = meta.includeWeekends;
     } catch {}
@@ -135,9 +137,10 @@ export function Calendar({
     const meta = parseRecurrence(activity);
     setRecurrenceEdit({
       enabled: !!(activity.isRecurring || meta.type),
-      type: (activity.recurrenceType || meta.type || 'daily') as 'daily' | 'weekly',
+      type: (activity.recurrenceType || meta.type || 'daily') as 'daily' | 'weekly' | 'monthly',
       endDate: meta.endDate || new Date(),
       weekDays: meta.weekDays || [],
+      monthDay: meta.monthDays?.[0] || new Date(activity.date).getDate(),
       completedDates: meta.completedDates || [],
       includeWeekends: (meta as any).includeWeekends !== false,
     });
@@ -156,6 +159,7 @@ export function Calendar({
         weekDays: recurrenceEdit.type === 'weekly' ? recurrenceEdit.weekDays : undefined,
         completedDates: recurrenceEdit.completedDates,
         includeWeekends: recurrenceEdit.type === 'daily' ? recurrenceEdit.includeWeekends : undefined,
+        monthDays: recurrenceEdit.type === 'monthly' ? [recurrenceEdit.monthDay] : undefined,
       };
       recurrenceBlock = `\n<recurrence>${JSON.stringify(meta)}</recurrence>`;
     }
@@ -235,6 +239,10 @@ export function Calendar({
       if (type === 'weekly') {
         const weekDays = (meta.weekDays && meta.weekDays.length) ? meta.weekDays : [start.getDay()];
         return weekDays.includes(dayStart.getDay());
+      }
+      if (type === 'monthly') {
+        const monthDays = (meta.monthDays && meta.monthDays.length) ? meta.monthDays : [start.getDate()];
+        return monthDays.includes(dayStart.getDate());
       }
       return isSameDay(start, dayStart);
     });
@@ -695,7 +703,19 @@ export function Calendar({
                           <Label>Tipo</Label>
                           <Select 
                             value={recurrenceEdit.type} 
-                            onValueChange={(v) => setRecurrenceEdit(r => ({...r, type: v as 'daily'|'weekly'}))}
+                            onValueChange={(value) => {
+                              const newType = value as 'daily' | 'weekly' | 'monthly';
+                              setRecurrenceEdit(prev => ({
+                                ...prev,
+                                type: newType,
+                                weekDays: newType === 'weekly' && prev.weekDays.length === 0
+                                  ? [new Date(editData.date).getDay()]
+                                  : prev.weekDays,
+                                monthDay: newType === 'monthly'
+                                  ? new Date(editData.date).getDate()
+                                  : prev.monthDay,
+                              }));
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -703,6 +723,7 @@ export function Calendar({
                             <SelectContent>
                               <SelectItem value="daily">Diária</SelectItem>
                               <SelectItem value="weekly">Semanal</SelectItem>
+                              <SelectItem value="monthly">Mensal</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -747,6 +768,21 @@ export function Calendar({
                                 </Button>
                               ))}
                             </div>
+                          </div>
+                        )}
+                        {recurrenceEdit.type === 'monthly' && (
+                          <div className="space-y-2 col-span-2">
+                            <Label>Dia do mês</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={recurrenceEdit.monthDay}
+                              onChange={(e) => {
+                                const value = Math.min(31, Math.max(1, Number(e.target.value) || 1));
+                                setRecurrenceEdit(prev => ({ ...prev, monthDay: value }));
+                              }}
+                            />
                           </div>
                         )}
                         {recurrenceEdit.type === 'daily' && (

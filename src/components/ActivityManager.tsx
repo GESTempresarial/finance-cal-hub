@@ -470,16 +470,24 @@ export function ActivityManager({
     dueDate: new Date(),
     estimatedMinutes: 60,
     isRecurring: false,
-    recurrenceType: "daily" as "daily" | "weekly",
+    recurrenceType: "daily" as "daily" | "weekly" | "monthly",
     endDate: new Date(),
     weekDays: [] as number[], // 0-6 (Sunday-Saturday)
     includeWeekends: true, // nova flag para recorrências diárias
+    monthDay: new Date().getDate(),
   });
 
   // Se veio uma data do calendário, aplicar uma única vez
   useEffect(() => {
     if (createDate) {
-      setFormData((prev) => ({ ...prev, dueDate: createDate }));
+      setFormData((prev) => ({
+        ...prev,
+        dueDate: createDate,
+        monthDay:
+          prev.recurrenceType === "monthly"
+            ? createDate.getDate()
+            : prev.monthDay,
+      }));
       onConsumeCreateDate?.();
     }
   }, [createDate]);
@@ -506,16 +514,18 @@ export function ActivityManager({
   const parseRecurrence = (
     activity: Activity
   ): {
-    type?: "daily" | "weekly";
+    type?: "daily" | "weekly" | "monthly";
     endDate?: Date;
     weekDays?: number[];
+    monthDays?: number[];
     completedDates?: string[];
     includeWeekends?: boolean;
   } => {
     const result: {
-      type?: "daily" | "weekly";
+      type?: "daily" | "weekly" | "monthly";
       endDate?: Date;
       weekDays?: number[];
+      monthDays?: number[];
       completedDates?: string[];
       includeWeekends?: boolean;
     } = {};
@@ -524,7 +534,7 @@ export function ActivityManager({
     if (!match) return result;
     try {
       const meta = JSON.parse(match[1]);
-      if (meta.type === "daily" || meta.type === "weekly")
+      if (meta.type === "daily" || meta.type === "weekly" || meta.type === "monthly")
         result.type = meta.type;
       if (meta.endDate) {
         const [y, m, d] = String(meta.endDate).split("-").map(Number);
@@ -532,6 +542,8 @@ export function ActivityManager({
       }
       if (Array.isArray(meta.weekDays))
         result.weekDays = meta.weekDays as number[];
+      if (Array.isArray(meta.monthDays))
+        result.monthDays = meta.monthDays as number[];
       if (Array.isArray(meta.completedDates))
         result.completedDates = meta.completedDates as string[];
       if (typeof meta.includeWeekends === "boolean")
@@ -665,9 +677,10 @@ export function ActivityManager({
   });
   const [recurrenceEdit, setRecurrenceEdit] = useState<{
     enabled: boolean;
-    type: "daily" | "weekly";
+    type: "daily" | "weekly" | "monthly";
     endDate: Date;
     weekDays: number[];
+    monthDay: number;
     completedDates: string[];
     includeWeekends: boolean;
   }>({
@@ -675,6 +688,7 @@ export function ActivityManager({
     type: "daily",
     endDate: new Date(),
     weekDays: [],
+    monthDay: new Date().getDate(),
     completedDates: [],
     includeWeekends: true,
   });
@@ -699,9 +713,11 @@ export function ActivityManager({
         enabled: !!(selectedActivity.isRecurring || meta.type),
         type: (selectedActivity.recurrenceType || meta.type || "daily") as
           | "daily"
-          | "weekly",
+          | "weekly"
+          | "monthly",
         endDate: meta.endDate || new Date(),
         weekDays: meta.weekDays || [],
+        monthDay: meta.monthDays?.[0] || new Date(selectedActivity.date).getDate(),
         completedDates: meta.completedDates || [],
         includeWeekends: (meta as any).includeWeekends !== false,
       });
@@ -727,6 +743,10 @@ export function ActivityManager({
         includeWeekends:
           formData.recurrenceType === "daily"
             ? formData.includeWeekends
+            : undefined,
+        monthDays:
+          formData.recurrenceType === "monthly"
+            ? [formData.monthDay]
             : undefined,
       };
       description = `${description || ""}\n<recurrence>${JSON.stringify(
@@ -765,6 +785,7 @@ export function ActivityManager({
       endDate: new Date(),
       weekDays: [],
       includeWeekends: true,
+      monthDay: new Date().getDate(),
     });
 
     onCloseCreateForm?.();
@@ -795,6 +816,7 @@ export function ActivityManager({
         endDate: format(recurrenceEdit.endDate, "yyyy-MM-dd"),
         weekDays: recurrenceEdit.type === "weekly" ? recurrenceEdit.weekDays : undefined,
         includeWeekends: recurrenceEdit.type === "daily" ? recurrenceEdit.includeWeekends : undefined,
+        monthDays: recurrenceEdit.type === "monthly" ? [recurrenceEdit.monthDay] : undefined,
         completedDates: recurrenceEdit.completedDates || [],
       };
       // Remover metadados antigos e adicionar novos
@@ -2078,12 +2100,13 @@ export function ActivityManager({
 
       {/* Create Activity Dialog */}
       <Dialog open={showCreateForm} onOpenChange={onCloseCreateForm}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-0">
             <DialogTitle>Nova Atividade</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          {/* Conteúdo com scroll */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Título*</Label>
@@ -2345,11 +2368,25 @@ export function ActivityManager({
                     <Label>Tipo</Label>
                     <Select
                       value={formData.recurrenceType}
-                      onValueChange={(v) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          recurrenceType: v as "daily" | "weekly",
-                        }))
+                      onValueChange={(value) =>
+                        setFormData((prev) => {
+                          const newType = value as
+                            | "daily"
+                            | "weekly"
+                            | "monthly";
+                          return {
+                            ...prev,
+                            recurrenceType: newType,
+                            weekDays:
+                              newType === "weekly" && prev.weekDays.length === 0
+                                ? [prev.dueDate.getDay()]
+                                : prev.weekDays,
+                            monthDay:
+                              newType === "monthly"
+                                ? prev.dueDate.getDate()
+                                : prev.monthDay,
+                          };
+                        })
                       }
                     >
                       <SelectTrigger>
@@ -2358,6 +2395,7 @@ export function ActivityManager({
                       <SelectContent>
                         <SelectItem value="daily">Diária</SelectItem>
                         <SelectItem value="weekly">Semanal</SelectItem>
+                        <SelectItem value="monthly">Mensal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2421,6 +2459,30 @@ export function ActivityManager({
                     </div>
                   )}
 
+                  {formData.recurrenceType === "monthly" && (
+                    <div className="space-y-2 col-span-2">
+                      <Label>Dia do mês</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={formData.monthDay}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            monthDay: Math.min(
+                              31,
+                              Math.max(1, Number(e.target.value) || 1)
+                            ),
+                          }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        A tarefa se repetirá todo dia {formData.monthDay} de cada mês
+                      </p>
+                    </div>
+                  )}
+
                   {formData.isRecurring &&
                     formData.recurrenceType === "daily" && (
                       <div className="col-span-2 flex items-center gap-2">
@@ -2446,13 +2508,14 @@ export function ActivityManager({
                 </div>
               )}
             </div>
+          </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={onCloseCreateForm}>
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateActivity}>Criar Atividade</Button>
-            </div>
+          {/* Rodapé fixo com botões */}
+          <div className="flex justify-end gap-2 px-6 py-4 border-t bg-background">
+            <Button variant="outline" onClick={onCloseCreateForm}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateActivity}>Criar Atividade</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2646,7 +2709,19 @@ export function ActivityManager({
                           <Label>Tipo</Label>
                           <Select 
                             value={recurrenceEdit.type} 
-                            onValueChange={(v) => setRecurrenceEdit(r => ({...r, type: v as 'daily'|'weekly'}))}
+                            onValueChange={(v) => {
+                              const newType = v as 'daily' | 'weekly' | 'monthly';
+                              setRecurrenceEdit(r => ({
+                                ...r,
+                                type: newType,
+                                weekDays: newType === 'weekly' && r.weekDays.length === 0
+                                  ? [new Date(editData.date).getDay()]
+                                  : r.weekDays,
+                                monthDay: newType === 'monthly'
+                                  ? new Date(editData.date).getDate()
+                                  : r.monthDay,
+                              }));
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -2654,6 +2729,7 @@ export function ActivityManager({
                             <SelectContent>
                               <SelectItem value="daily">Diária</SelectItem>
                               <SelectItem value="weekly">Semanal</SelectItem>
+                              <SelectItem value="monthly">Mensal</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -2698,6 +2774,24 @@ export function ActivityManager({
                                 </Button>
                               ))}
                             </div>
+                          </div>
+                        )}
+                        {recurrenceEdit.type === 'monthly' && (
+                          <div className="space-y-2 col-span-2">
+                            <Label>Dia do mês</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={recurrenceEdit.monthDay}
+                              onChange={(e) => {
+                                const value = Math.min(31, Math.max(1, Number(e.target.value) || 1));
+                                setRecurrenceEdit(prev => ({ ...prev, monthDay: value }));
+                              }}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              A tarefa se repetirá todo dia {recurrenceEdit.monthDay} de cada mês
+                            </p>
                           </div>
                         )}
                         {recurrenceEdit.type === 'daily' && (
