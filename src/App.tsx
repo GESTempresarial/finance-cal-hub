@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import Auth from "./pages/Auth";
 import { useActivities } from "@/hooks/useActivities";
 import { useClients } from "@/hooks/useClients";
 import { useTimers } from "@/hooks/useTimers";
@@ -26,6 +27,7 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <Routes>
+            <Route path="/auth" element={<Auth />} />
             <Route path="/" element={<Index 
               activitiesHook={activitiesHook}
               clientsHook={clientsHook}

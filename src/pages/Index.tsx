@@ -1,6 +1,7 @@
-
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User } from '@/types';
+import { Session } from '@supabase/supabase-js';
 import { UserLogin } from '@/components/UserLogin';
 import { MainLayout } from '@/components/MainLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,11 +17,33 @@ interface IndexProps {
 const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        setSession(currentSession);
+        if (!currentSession) {
+          navigate('/auth');
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (!currentSession) {
+        navigate('/auth');
+      } else {
+        fetchUsers();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const fetchUsers = async () => {
     try {
@@ -69,8 +92,11 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
+    setSession(null);
+    navigate('/auth');
   };
 
   if (loading) {
