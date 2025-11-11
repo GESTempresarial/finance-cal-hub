@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Mail, Lock, Eye, EyeOff, TrendingUp } from 'lucide-react';
+import { Loader2, Mail, Lock, Eye, EyeOff, Calendar as CalendarIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const authSchema = z.object({
@@ -213,7 +213,7 @@ export default function Auth() {
               transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
               className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-primary/60 rounded-2xl flex items-center justify-center"
             >
-              <TrendingUp className="w-8 h-8 text-white" />
+              <CalendarIcon className="w-8 h-8 text-white" />
             </motion.div>
             <div>
               <CardTitle className="text-2xl font-bold">ConectAct</CardTitle>
