@@ -83,7 +83,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
               <CalendarIcon className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base md:text-xl font-bold leading-tight truncate">Gestão de Atividades</h1>
+              <h1 className="text-base md:text-xl font-bold leading-tight truncate">ConectAct</h1>
               <p className="text-xs md:text-sm text-muted-foreground truncate">
                 {currentUser.name}
               </p>

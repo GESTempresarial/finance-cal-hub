@@ -15,8 +15,7 @@ import { motion } from 'framer-motion';
 const authSchema = z.object({
   email: z.string().email('Email inválido').min(1, 'Email é obrigatório'),
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
-  name: z.string().optional(),
-  phone: z.string().optional(),
+  companyName: z.string().min(2, 'Nome da empresa deve ter pelo menos 2 caracteres').optional(),
 });
 
 type AuthFormData = z.infer<typeof authSchema>;
@@ -33,8 +32,7 @@ export default function Auth() {
     defaultValues: {
       email: '',
       password: '',
-      name: '',
-      phone: '',
+      companyName: '',
     },
   });
 
@@ -72,21 +70,11 @@ export default function Auth() {
           description: 'Bem-vindo de volta.',
         });
       } else {
-        // Validate name and phone for signup
-        if (!data.name?.trim()) {
+        // Signup - validar nome da empresa
+        if (!data.companyName?.trim()) {
           toast({
             title: 'Erro no cadastro',
-            description: 'Nome é obrigatório',
-            variant: 'destructive',
-          });
-          setLoading(false);
-          return;
-        }
-
-        if (!data.phone?.trim()) {
-          toast({
-            title: 'Erro no cadastro',
-            description: 'Telefone é obrigatório',
+            description: 'Nome da empresa é obrigatório',
             variant: 'destructive',
           });
           setLoading(false);
@@ -101,31 +89,30 @@ export default function Auth() {
           options: {
             emailRedirectTo: redirectUrl,
             data: {
-              name: data.name,
-              phone: data.phone,
+              company_name: data.companyName,
             },
           },
         });
 
         if (signUpError) throw signUpError;
 
-        // Create user record in users table
-        if (authData.user) {
-          const { error: userError } = await supabase
-            .from('users')
-            .insert([
-              {
-                id: authData.user.id,
-                name: data.name,
-                phone: data.phone,
-              },
-            ]);
-
-          if (userError) throw userError;
-        }
+        // TODO: Criar empresa após migração ser aplicada
+        // if (authData.user) {
+        //   const { data: companyData, error: companyError } = await supabase
+        //     .from('companies')
+        //     .insert([
+        //       {
+        //         name: data.companyName,
+        //       },
+        //     ])
+        //     .select()
+        //     .single();
+        //
+        //   if (companyError) throw companyError;
+        // }
 
         toast({
-          title: 'Cadastro realizado com sucesso!',
+          title: 'Empresa cadastrada com sucesso!',
           description: 'Verifique seu email para confirmar a conta.',
         });
       }
@@ -171,41 +158,27 @@ export default function Auth() {
               <TrendingUp className="w-8 h-8 text-white" />
             </motion.div>
             <div>
-              <CardTitle className="text-2xl font-bold">Finance Cal Hub</CardTitle>
+              <CardTitle className="text-2xl font-bold">ConectAct</CardTitle>
               <CardDescription>
-                {isLogin ? 'Entre com sua conta' : 'Crie sua conta'}
+                {isLogin ? 'Entre com sua conta' : 'Cadastre sua empresa'}
               </CardDescription>
             </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               {!isLogin && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome completo</Label>
-                    <Input
-                      id="name"
-                      placeholder="Seu nome"
-                      {...form.register('name')}
-                      disabled={loading}
-                    />
-                    {form.formState.errors.name && (
-                      <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input
-                      id="phone"
-                      placeholder="+5511999999999"
-                      {...form.register('phone')}
-                      disabled={loading}
-                    />
-                    {form.formState.errors.phone && (
-                      <p className="text-sm text-destructive">{form.formState.errors.phone.message}</p>
-                    )}
-                  </div>
-                </>
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Nome da Empresa</Label>
+                  <Input
+                    id="companyName"
+                    placeholder="Nome da sua empresa"
+                    {...form.register('companyName')}
+                    disabled={loading}
+                  />
+                  {form.formState.errors.companyName && (
+                    <p className="text-sm text-destructive">{form.formState.errors.companyName.message}</p>
+                  )}
+                </div>
               )}
 
               <div className="space-y-2">
@@ -278,13 +251,13 @@ export default function Auth() {
                 ) : isLogin ? (
                   'Entrar'
                 ) : (
-                  'Cadastrar'
+                  'Cadastrar Empresa'
                 )}
               </Button>
 
               <div className="text-center text-sm">
                 <span className="text-muted-foreground">
-                  {isLogin ? 'Não tem uma conta?' : 'Já tem uma conta?'}
+                  {isLogin ? 'Não tem empresa cadastrada?' : 'Já tem uma conta?'}
                 </span>{' '}
                 <button
                   type="button"
@@ -295,7 +268,7 @@ export default function Auth() {
                   className="text-primary hover:underline font-medium"
                   disabled={loading}
                 >
-                  {isLogin ? 'Cadastre-se' : 'Entrar'}
+                  {isLogin ? 'Cadastrar' : 'Entrar'}
                 </button>
               </div>
             </form>
