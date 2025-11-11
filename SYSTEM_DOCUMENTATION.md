@@ -10,10 +10,14 @@ O **Finance Cal Hub** é um sistema completo de gestão de atividades e produtiv
 
 ### **Stack Principal**
 - **Frontend**: React 18 + TypeScript + Vite
-- **Backend**: Supabase (PostgreSQL + Auth + Realtime)
-- **UI**: shadcn/ui + TailwindCSS
-- **Roteamento**: TanStack Router (React Router)
+- **Backend**: Supabase (PostgreSQL + Realtime)
+- **UI**: shadcn/ui + TailwindCSS + Radix UI
+- **Roteamento**: React Router v6
 - **Gestão de Estado**: React Hooks + Context API
+- **Editor de Texto**: TipTap (ProseMirror)
+- **Animações**: Framer Motion + Canvas Confetti
+- **Formulários**: React Hook Form + Zod
+- **Datas**: date-fns
 
 ### **Estrutura de Pastas**
 ```
@@ -41,23 +45,23 @@ src/
 ```typescript
 interface User {
   id: string;
-  email: string;
   name: string;
+  phone?: string;  // Número de telefone para integração WhatsApp
   createdAt: Date;
 }
 ```
-- Sistema de autenticação com Supabase Auth
+- Sistema de autenticação simplificado baseado em nome/telefone
 - Cada usuário vê apenas suas atividades atribuídas
 - Suporte para múltiplos usuários por workspace
+- Integração com WhatsApp via número de telefone
 
 ### **2. Clientes (Clients)**
 ```typescript
 interface Client {
   id: string;
   name: string;
-  email?: string;
-  phone?: string;
   colorIndex: number;  // 1-10 para cores de identificação
+  notes?: string;      // Notas e observações sobre o cliente
   isActive: boolean;
   createdAt: Date;
 }
@@ -65,6 +69,7 @@ interface Client {
 - Cadastro de clientes com identificação visual por cores
 - Status ativo/inativo
 - 10 cores predefinidas para fácil identificação
+- Campo de notas para observações importantes
 
 ### **3. Atividades (Activities)**
 ```typescript
@@ -134,18 +139,18 @@ Permite criar tarefas que se repetem:
 
 | Status | Label | Uso |
 |--------|-------|-----|
-| `pending` | Pendente | Tarefa não iniciada |
-| `doing` | Em Andamento | Tarefa sendo executada |
-| `waiting-client` | Aguardando Cliente | Bloqueada esperando cliente |
-| `waiting-team` | Aguardando Equipe | Bloqueada esperando time |
-| `completed` | Concluída | Finalizada |
+| `pending` | A Fazer | Tarefa não iniciada |
+| `doing` | Fazendo | Tarefa sendo executada |
+| `completed` | Feito | Finalizada |
+
+**Observação:** Os status `waiting-client` e `waiting-team` foram removidos em versões recentes para simplificar o fluxo de trabalho.
 
 **Fluxo de Status:**
 1. Atividade criada → `pending`
 2. Usuário clica "Iniciar" → `doing` (inicia timer)
 3. Durante execução:
    - Pode pausar/retomar timer
-   - Pode marcar "Aguardando Cliente" ou "Aguardando Equipe"
+   - Pode adicionar notas na descrição
 4. Ao concluir → `completed` (salva tempo real gasto)
 
 ---
@@ -182,11 +187,13 @@ Permite criar tarefas que se repetem:
 - 📊 Indicadores de status em cada atividade
 - ⏰ Timer em tempo real para atividades "doing"
 - 🔁 Renderização automática de recorrências
+- 🔄 Navegação entre meses (anterior/próximo)
+- 📱 Responsivo para mobile, tablet e desktop
 
 #### **Interações:**
 - Clicar em dia vazio → Abrir modal "Nova Atividade" com data pré-selecionada
 - Clicar em atividade → Abrir modal de detalhes/edição
-- Arrastar e soltar para reagendar (possível extensão)
+- Hover sobre atividade → Mostra preview rápido
 
 #### **Renderização de Recorrências:**
 O calendário analisa atividades recorrentes e gera ocorrências:
@@ -218,16 +225,20 @@ Painel principal com 3 seções:
 #### **Hoje**
 - Lista todas as atividades do dia atual
 - Incluindo ocorrências de recorrências
+- Ordenação por status e prioridade
 - Botões de ação contextuais por status:
-  - **Pendente**: `Iniciar`
-  - **Fazendo**: `Pausar/Retomar`, `Aguardar Cliente/Equipe`, `Concluir`
-  - **Concluída**: `Reabrir`
-  - **Aguardando**: `Retomar`, `Concluir`
+  - **A Fazer**: `Iniciar`
+  - **Fazendo**: `Pausar/Retomar`, `Concluir`
+  - **Feito**: `Reabrir`
+- Exibição de tempo estimado vs tempo real
+- Timer em tempo real para atividades em andamento
 
 #### **Outras Atividades**
-- Tarefas de outros dias
-- Exibe apenas informações (sem botões de ação)
-- Botão de edição e exclusão
+- Tarefas de outros dias (passado e futuro)
+- Agrupadas por data
+- Exibe status e informações resumidas
+- Botões de edição e exclusão
+- Filtros para busca rápida
 
 #### **Atividades Recorrentes** (colapsável)
 - Lista todas as recorrências cadastradas
@@ -254,9 +265,9 @@ Funcionalidade única de timer flutuante:
 #### **Atalhos Globais (com PiP ativo):**
 - `Alt + P` → Play/Pause timer
 - `Alt + F` → Finalizar/Concluir
-- `Alt + C` → Aguardar Cliente
-- `Alt + T` → Aguardar Equipe
 - `Alt + E` → Editar atividade
+
+**Observação:** Os atalhos para "Aguardar Cliente" e "Aguardar Equipe" foram removidos após simplificação do sistema de status.
 
 #### **Tecnologia:**
 ```typescript
@@ -300,6 +311,327 @@ fireConfetti(); // Dispara animação de confetes
 
 ---
 
+### **9. Editor de Texto Rico (Rich Text)**
+
+O sistema possui um editor de texto avançado para descrições de atividades:
+
+#### **Funcionalidades:**
+- **Formatação**: Negrito, itálico, sublinhado, código
+- **Listas**: Listas ordenadas e não ordenadas
+- **Task Lists**: Checkboxes para sub-tarefas
+- **Títulos**: H1, H2, H3 para organização
+- **Blocos de Código**: Para snippets e comandos
+- **Links**: Inserção de links externos
+- **Citações**: Blocos de citação
+
+#### **Visualização:**
+- Modo de edição completo ao criar/editar
+- Visualização inline renderizada nas listagens
+- Preserva toda formatação e estrutura
+
+#### **Tecnologia:**
+- **TipTap**: Editor baseado em ProseMirror
+- **Extensions**: StarterKit, TaskList, TaskItem, Placeholder
+- Salva em HTML no banco de dados
+- Renderização segura com componente customizado
+
+---
+
+### **10. Controle via WhatsApp 📱**
+
+O sistema oferece integração completa via WhatsApp, permitindo que usuários gerenciem suas atividades sem precisar acessar o navegador.
+
+#### **Conceito de Integração:**
+A integração WhatsApp funciona como uma interface alternativa ao sistema web, conectando-se diretamente ao banco de dados Supabase através de um bot intermediário.
+
+#### **Arquitetura da Integração:**
+
+```
+┌─────────────┐         ┌──────────────┐         ┌─────────────┐
+│   WhatsApp  │ ←────→  │  Bot Server  │ ←────→  │  Supabase   │
+│   (Usuário) │         │  (Node.js)   │         │  (Database) │
+└─────────────┘         └──────────────┘         └─────────────┘
+```
+
+**Componentes:**
+1. **Cliente WhatsApp**: Usuário interage via mensagens
+2. **Bot Server**: Processa comandos e faz ponte com Supabase
+3. **Supabase**: Banco de dados compartilhado com aplicação web
+
+#### **Autenticação via WhatsApp:**
+- Usuários são identificados pelo número de telefone
+- Mapeamento `phone` → `user_id` no banco de dados
+- Primeiro acesso requer confirmação de identidade
+
+#### **Comandos Disponíveis:**
+
+**📋 Consultas:**
+```
+/hoje           → Lista atividades do dia
+/pendentes      → Lista atividades pendentes
+/fazendo        → Mostra atividade em andamento
+/clientes       → Lista seus clientes
+/tempo          → Mostra tempo gasto hoje
+/resumo         → Resumo completo do dia
+```
+
+**✅ Ações:**
+```
+/iniciar [ID]   → Inicia timer de uma atividade
+/pausar         → Pausa timer atual
+/retomar        → Retoma timer pausado
+/concluir       → Finaliza atividade atual
+/nova           → Inicia criação de atividade
+/status [ID]    → Ver detalhes de atividade
+```
+
+**🔄 Gerenciamento:**
+```
+/clientes       → Gerenciar clientes
+/ajuda          → Lista todos os comandos
+/config         → Configurações pessoais
+```
+
+#### **Fluxo de Criação de Atividade:**
+
+```
+Usuário: /nova
+Bot: Para qual cliente? (lista clientes com números)
+
+Usuário: 1
+Bot: Qual o título da atividade?
+
+Usuário: Fechar balancete
+Bot: Descreva a atividade (opcional):
+
+Usuário: Conferir lançamentos e fechar
+Bot: Qual a data? (hoje, amanhã, DD/MM)
+
+Usuário: hoje
+Bot: Tempo estimado em minutos?
+
+Usuário: 120
+Bot: ✅ Atividade criada com sucesso!
+     ID: ABC123
+     Cliente: Empresa X
+     Prazo: Hoje
+     Estimativa: 2h
+```
+
+#### **Notificações Automáticas:**
+
+O bot pode enviar notificações proativas:
+
+**Lembretes:**
+- ⏰ Atividades próximas do prazo
+- 📅 Tarefas do dia pela manhã (8h)
+- ⚠️ Atividades atrasadas
+
+**Status:**
+- ✅ Quando alguém conclui uma atividade compartilhada
+- 🔄 Quando são atribuídas novas atividades
+- ⏱️ Lembrete de timer rodando há muito tempo
+
+**Configuração de Notificações:**
+```
+/config notificacoes on/off
+/config horario_lembrete 08:00
+/config lembrar_atrasadas on/off
+```
+
+#### **Respostas Inteligentes:**
+
+O bot entende linguagem natural:
+
+```
+Usuário: "começar a fazer o balancete"
+Bot: 📋 Encontrei estas atividades relacionadas:
+     1. Fechar balancete - Empresa X
+     2. Balancete Q4 - Empresa Y
+     Digite o número para iniciar.
+
+Usuário: "1"
+Bot: ✅ Timer iniciado!
+     📊 Fechar balancete - Empresa X
+     ⏱️ 00:00:05 (rodando)
+```
+
+Aceita variações como:
+- "começar", "iniciar", "start"
+- "terminar", "concluir", "finalizar"
+- "hoje", "agora", "pendente"
+
+#### **Tecnologias para Implementação:**
+
+**Backend do Bot:**
+```typescript
+// Stack recomendada
+- Node.js + TypeScript
+- whatsapp-web.js ou Baileys (cliente WhatsApp)
+- @supabase/supabase-js (conexão com DB)
+- node-cron (agendamento de notificações)
+- natural ou compromise (NLP básico)
+```
+
+**Estrutura do Bot:**
+```typescript
+interface WhatsAppBot {
+  // Autenticação
+  authenticateUser(phone: string): Promise<User>;
+  
+  // Comandos
+  handleCommand(userId: string, command: string): Promise<string>;
+  
+  // Conversação
+  handleConversation(userId: string, message: string): Promise<string>;
+  
+  // Notificações
+  sendNotification(phone: string, message: string): Promise<void>;
+  scheduleReminders(userId: string): void;
+  
+  // Queries Supabase
+  listActivities(userId: string, filter?: string): Promise<Activity[]>;
+  createActivity(userId: string, data: ActivityInput): Promise<Activity>;
+  updateActivityStatus(activityId: string, status: string): Promise<void>;
+  startTimer(userId: string, activityId: string): Promise<void>;
+}
+```
+
+#### **Tabela de Mapeamento WhatsApp:**
+
+Necessária para vincular números de telefone a usuários:
+
+```sql
+CREATE TABLE whatsapp_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  phone TEXT UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  last_message_at TIMESTAMP WITH TIME ZONE,
+  conversation_state JSONB,  -- Estado da conversa atual
+  notification_settings JSONB, -- Preferências de notificação
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Índice para busca rápida por telefone
+CREATE INDEX idx_whatsapp_phone ON whatsapp_users(phone);
+```
+
+#### **Estado de Conversação:**
+
+Para comandos multi-etapa (como criar atividade):
+
+```typescript
+interface ConversationState {
+  command: string;           // 'create_activity'
+  step: number;              // Etapa atual
+  data: {                    // Dados coletados
+    clientId?: string;
+    title?: string;
+    description?: string;
+    date?: Date;
+    estimatedMinutes?: number;
+  };
+  createdAt: Date;
+  expiresAt: Date;          // Expira após 10 min de inatividade
+}
+```
+
+#### **Segurança:**
+
+**Validações:**
+- ✅ Verificar se número está cadastrado
+- ✅ Validar `user_id` em todas operações
+- ✅ Respeitar RLS do Supabase
+- ✅ Rate limiting (máximo de mensagens/minuto)
+- ✅ Sanitizar inputs do usuário
+
+**Logs:**
+- Registrar todas as ações via WhatsApp
+- Auditoria de comandos executados
+- Monitoramento de uso
+
+#### **Exemplo de Implementação Simplificada:**
+
+```typescript
+// bot-server/index.ts
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import { createClient } from '@supabase/supabase-js';
+
+const whatsapp = new Client({
+  authStrategy: new LocalAuth()
+});
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+whatsapp.on('message', async (msg) => {
+  const phone = msg.from.replace('@c.us', '');
+  
+  // Buscar usuário
+  const { data: whatsappUser } = await supabase
+    .from('whatsapp_users')
+    .select('user_id')
+    .eq('phone', phone)
+    .single();
+  
+  if (!whatsappUser) {
+    await msg.reply('Número não cadastrado. Entre em contato com o administrador.');
+    return;
+  }
+  
+  // Processar comando
+  const response = await handleCommand(whatsappUser.user_id, msg.body);
+  await msg.reply(response);
+});
+
+async function handleCommand(userId: string, message: string) {
+  if (message === '/hoje') {
+    const { data: activities } = await supabase
+      .from('activities')
+      .select('*')
+      .contains('assigned_users', [userId])
+      .eq('date', new Date().toISOString().split('T')[0]);
+    
+    if (!activities?.length) {
+      return '📭 Nenhuma atividade para hoje!';
+    }
+    
+    let response = '📋 *Atividades de Hoje:*\n\n';
+    activities.forEach((act, i) => {
+      response += `${i+1}. ${act.title}\n`;
+      response += `   Cliente: ${act.client_name}\n`;
+      response += `   Status: ${act.status}\n`;
+      response += `   ID: ${act.id.slice(0, 8)}\n\n`;
+    });
+    
+    return response;
+  }
+  
+  // Outros comandos...
+}
+
+whatsapp.initialize();
+```
+
+#### **Benefícios da Integração:**
+
+✅ **Acessibilidade**: Gerenciar tarefas de qualquer lugar  
+✅ **Rapidez**: Comandos instantâneos via mensagem  
+✅ **Notificações**: Alertas em tempo real  
+✅ **Mobilidade**: Não requer abrir navegador  
+✅ **Ubiquidade**: WhatsApp já está instalado  
+✅ **Simplicidade**: Interface conversacional intuitiva  
+
+#### **Limitações:**
+
+⚠️ **Funcionalidades Limitadas**: Algumas features do web não estão disponíveis  
+⚠️ **Formatação**: Texto simples, sem rich text completo  
+⚠️ **Mídia**: Não suporta upload de arquivos (ainda)  
+⚠️ **Visualização**: Sem calendário visual  
+⚠️ **Conexão**: Depende do servidor do bot estar online  
+
+---
+
 ## 📊 Banco de Dados (Supabase)
 
 ### **Tabelas:**
@@ -307,8 +639,8 @@ fireConfetti(); // Dispara animação de confetes
 #### **`users`**
 ```sql
 id UUID PRIMARY KEY
-email TEXT UNIQUE
 name TEXT
+phone TEXT
 created_at TIMESTAMP
 ```
 
@@ -316,9 +648,8 @@ created_at TIMESTAMP
 ```sql
 id UUID PRIMARY KEY
 name TEXT
-email TEXT
-phone TEXT
 color_index INTEGER (1-10)
+notes TEXT
 is_active BOOLEAN
 user_id UUID REFERENCES users(id)
 created_at TIMESTAMP
@@ -340,8 +671,22 @@ actual_duration INTEGER
 status TEXT
 is_recurring BOOLEAN
 recurrence_type TEXT
+started_at TIMESTAMP
+completed_at TIMESTAMP
 created_at TIMESTAMP
 updated_at TIMESTAMP
+```
+
+#### **`whatsapp_users`** (Para integração WhatsApp)
+```sql
+id UUID PRIMARY KEY
+phone TEXT UNIQUE
+user_id UUID REFERENCES users(id)
+is_active BOOLEAN
+last_message_at TIMESTAMP
+conversation_state JSONB
+notification_settings JSONB
+created_at TIMESTAMP
 ```
 
 ### **Row Level Security (RLS):**
@@ -377,10 +722,12 @@ updated_at TIMESTAMP
 
 ### **Fluxo de Login:**
 1. Usuário acessa aplicação
-2. Redirecionado para login Supabase
-3. Após autenticação, token JWT armazenado
-4. Todas as requisições incluem token
-5. RLS do Supabase valida permissões
+2. Seleciona seu nome da lista ou cria novo usuário
+3. Opcionalmente fornece número de telefone (para WhatsApp)
+4. Sistema carrega apenas suas atividades
+5. Dados persistem no Supabase
+
+**Observação:** O sistema não usa Supabase Auth tradicional, mas sim uma autenticação simplificada baseada em seleção de usuário, ideal para equipes internas.
 
 ### **Permissões:**
 - ✅ Ver atividades onde está atribuído
@@ -402,7 +749,7 @@ Sistema totalmente responsivo:
 
 ## 🚀 Fluxo de Trabalho Típico
 
-### **Dia a Dia do Usuário:**
+### **Dia a Dia do Usuário - Via Web:**
 
 1. **Manhã:**
    - Abrir sistema
@@ -411,7 +758,7 @@ Sistema totalmente responsivo:
 
 2. **Durante o Dia:**
    - Pausar/retomar conforme necessário
-   - Marcar "Aguardando Cliente" quando bloqueado
+   - Usar editor de texto rico para documentar progresso
    - Concluir tarefas (🎉 confetes!)
    - Sistema salva tempo real gasto
 
@@ -424,6 +771,28 @@ Sistema totalmente responsivo:
    - Ver tempo estimado vs real
    - Filtrar por cliente/status
    - Reagendar se necessário
+
+### **Dia a Dia do Usuário - Via WhatsApp:**
+
+1. **Manhã:**
+   - Receber mensagem com atividades do dia (8h)
+   - Responder `/iniciar 1` para começar primeira tarefa
+
+2. **Durante o Dia:**
+   - `/pausar` quando necessário
+   - `/retomar` para continuar
+   - `/concluir` ao finalizar
+   - Receber notificações de novas atribuições
+
+3. **Consultas Rápidas:**
+   - `/tempo` para ver quanto já trabalhou
+   - `/pendentes` para ver o que falta
+   - `/resumo` para overview completo
+
+4. **Criação de Atividades:**
+   - `/nova` inicia processo guiado
+   - Bot pergunta cada informação
+   - Confirma criação
 
 ---
 
@@ -485,13 +854,17 @@ interface WhatsAppMapping {
 O sistema é um **gerenciador de tarefas orientado a tempo** com:
 - ✅ Múltiplos usuários e clientes
 - ✅ Timer integrado com persistência
-- ✅ Recorrências automáticas
+- ✅ Recorrências automáticas (diária, semanal, mensal)
 - ✅ Status detalhados de workflow
 - ✅ Rastreamento de tempo estimado vs real
-- ✅ Visualização por calendário
+- ✅ Visualização por calendário mensal
 - ✅ Atribuição multi-usuário
+- ✅ Editor de texto rico para descrições
+- ✅ Picture-in-Picture com timer flutuante
+- ✅ Integração via WhatsApp (em desenvolvimento)
+- ✅ Interface responsiva (mobile, tablet, desktop)
 
-**Ideal para:** Equipes que precisam controlar tempo gasto por cliente, gerenciar tarefas recorrentes e ter visibilidade clara de produtividade.
+**Ideal para:** Equipes de BPO financeiro que precisam controlar tempo gasto por cliente, gerenciar tarefas recorrentes, ter visibilidade clara de produtividade e acessar o sistema via múltiplas plataformas (web e WhatsApp).
 
 ---
 
@@ -511,7 +884,35 @@ O sistema é um **gerenciador de tarefas orientado a tempo** com:
 - Use transações para operações que afetam múltiplas tabelas
 - Implemente retry logic para operações críticas
 - Log todas as ações para auditoria
+- Para integração WhatsApp, sempre valide o número de telefone
+- Use rate limiting em APIs públicas
+- Sanitize user inputs antes de processar
 
 ---
 
-**Última atualização:** 30 de outubro de 2025
+## 🔄 Changelog de Versões
+
+### **Versão Atual (Novembro 2025)**
+✨ **Novas Funcionalidades:**
+- Editor de texto rico (TipTap) para descrições
+- Recorrência mensal (além de diária e semanal)
+- Integração via WhatsApp (documentação e arquitetura)
+- Campo de notas para clientes
+- Melhorias na responsividade mobile
+
+🔧 **Alterações:**
+- Simplificação do sistema de status (removidos "waiting-client" e "waiting-team")
+- Autenticação simplificada sem Supabase Auth
+- Campo `phone` adicionado aos usuários
+- Timestamps `started_at` e `completed_at` nas atividades
+
+### **Versão Anterior (Outubro 2025)**
+- Sistema base com calendário
+- Timers e Picture-in-Picture
+- Recorrências diárias e semanais
+- Multi-usuário e multi-cliente
+- Sistema de cores
+
+---
+
+**Última atualização:** 11 de novembro de 2025
