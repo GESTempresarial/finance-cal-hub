@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@/types';
 import { Session } from '@supabase/supabase-js';
@@ -18,64 +18,147 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { setCompanyContext: setActivitiesCompanyContext } = activitiesHook;
+  const { setCompanyContext: setClientsCompanyContext } = clientsHook;
 
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, currentSession) => {
-        setSession(currentSession);
-        if (!currentSession) {
-          navigate('/auth');
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      if (!currentSession) {
-        navigate('/auth');
-      } else {
-        fetchUsers();
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async (activeCompanyId: string) => {
     try {
       const { data, error } = await supabase
         .from('users')
         .select('*')
+        .eq('company_id', activeCompanyId)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
+
       const formattedUsers = (data || []).map(user => ({
         id: user.id,
         name: user.name,
         phone: user.phone,
-        createdAt: new Date(user.created_at)
+        createdAt: new Date(user.created_at),
+        companyId: user.company_id || undefined,
       }));
       setUsers(formattedUsers);
     } catch (error) {
       console.error('Error fetching users:', error);
-    } finally {
-      setLoading(false);
+      setUsers([]);
     }
-  };
+  }, []);
+
+  const fetchCompanyName = useCallback(async (companyIdValue: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', companyIdValue)
+        .single();
+
+      if (error) throw error;
+      setCompanyName(data?.name ?? null);
+    } catch (error) {
+      console.error('Erro ao buscar nome da empresa:', error);
+      setCompanyName(null);
+    }
+  }, []);
+
+  const loadCompanyContext = useCallback(async (activeSession: Session, options: { showLoader?: boolean } = {}) => {
+    const { showLoader = false } = options;
+    if (showLoader) {
+      setLoading(true);
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', activeSession.user.id)
+        .single();
+
+      if (error) throw error;
+
+      if (!profile?.company_id) {
+        setCompanyId(null);
+        setCompanyName(null);
+        setActivitiesCompanyContext(null);
+        setClientsCompanyContext(null);
+        setUsers([]);
+        return;
+      }
+
+      setCompanyId(profile.company_id);
+      fetchCompanyName(profile.company_id);
+      setActivitiesCompanyContext(profile.company_id);
+      setClientsCompanyContext(profile.company_id);
+      await fetchUsers(profile.company_id);
+    } catch (error) {
+      console.error('Erro ao carregar empresa do usuário autenticado:', error);
+      setCompanyId(null);
+      setCompanyName(null);
+      setActivitiesCompanyContext(null);
+      setClientsCompanyContext(null);
+      setUsers([]);
+    } finally {
+      if (showLoader) {
+        setLoading(false);
+      }
+    }
+  }, [fetchUsers, fetchCompanyName, setActivitiesCompanyContext, setClientsCompanyContext]);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        if (event === 'SIGNED_OUT' || !currentSession) {
+          setSession(null);
+          setCompanyId(null);
+          setCompanyName(null);
+          setCurrentUser(null);
+          setUsers([]);
+          setActivitiesCompanyContext(null);
+          setClientsCompanyContext(null);
+          setLoading(false);
+          navigate('/auth');
+          return;
+        }
+
+        if (event === 'SIGNED_IN') {
+          setSession(currentSession);
+          loadCompanyContext(currentSession, { showLoader: true });
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!currentSession) {
+        setSession(null);
+        setLoading(false);
+        navigate('/auth');
+      } else {
+        setSession(currentSession);
+        loadCompanyContext(currentSession, { showLoader: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate, loadCompanyContext, setActivitiesCompanyContext, setClientsCompanyContext]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
   };
 
-  const handleCreateUser = async (name: string, phone: string) => {
+  const handleCreateUser = async (name: string, phone?: string) => {
+    if (!companyId) {
+      console.error('Não é possível criar usuário sem empresa definida.');
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('users')
-        .insert([{ name, phone }])
+        .insert([{ name, phone: phone?.trim() || null, company_id: companyId }])
         .select()
         .single();
       
@@ -84,7 +167,8 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
         id: data.id,
         name: data.name,
         phone: data.phone,
-        createdAt: new Date(data.created_at)
+        createdAt: new Date(data.created_at),
+        companyId: data.company_id || undefined,
       };
       setUsers(prev => [...prev, newUser]);
     } catch (error) {
@@ -92,10 +176,73 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     }
   };
 
-  const handleLogout = async () => {
+  const handleUpdateUser = async (id: string, updates: { name?: string; phone?: string | null }) => {
+    if (!companyId) return;
+    const payload: { name?: string; phone?: string | null } = {};
+    if (typeof updates.name !== 'undefined') {
+      const trimmedName = updates.name?.trim();
+      if (!trimmedName) {
+        throw new Error('Nome não pode ser vazio.');
+      }
+      payload.name = trimmedName;
+    }
+    if (typeof updates.phone !== 'undefined') payload.phone = updates.phone || null;
+
+    if (Object.keys(payload).length === 0) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update(payload)
+        .eq('id', id)
+        .eq('company_id', companyId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setUsers(prev =>
+        prev.map(user =>
+          user.id === id
+            ? {
+                ...user,
+                name: data.name,
+                phone: data.phone || undefined,
+              }
+            : user
+        )
+      );
+
+      setCurrentUser(prev =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              name: data.name,
+              phone: data.phone || undefined,
+            }
+          : prev
+      );
+    } catch (error) {
+      console.error('Erro ao atualizar usuário:', error);
+      throw error;
+    }
+  };
+
+  const handleBackToUserSelection = () => {
+    setCurrentUser(null);
+  };
+
+  const handleSignOut = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
     setSession(null);
+    setCompanyId(null);
+    setCompanyName(null);
+    setUsers([]);
+    setActivitiesCompanyContext(null);
+    setClientsCompanyContext(null);
     navigate('/auth');
   };
 
@@ -116,6 +263,8 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
         users={users}
         onLogin={handleLogin}
         onCreateUser={handleCreateUser}
+        onUpdateUser={handleUpdateUser}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -124,10 +273,11 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     <MainLayout
       currentUser={currentUser}
       users={users}
-      onLogout={handleLogout}
+      onLogout={handleBackToUserSelection}
       activitiesHook={activitiesHook}
       clientsHook={clientsHook}
       timersHook={timersHook}
+      companyName={companyName}
     />
   );
 };

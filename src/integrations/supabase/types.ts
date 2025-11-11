@@ -19,6 +19,7 @@ export type Database = {
           actual_duration: number | null
           assigned_to: string
           assigned_users: string[] | null
+          company_id: string | null
           client_id: string
           completed_at: string | null
           created_at: string
@@ -37,6 +38,7 @@ export type Database = {
           actual_duration?: number | null
           assigned_to: string
           assigned_users?: string[] | null
+          company_id?: string | null
           client_id: string
           completed_at?: string | null
           created_at?: string
@@ -55,6 +57,7 @@ export type Database = {
           actual_duration?: number | null
           assigned_to?: string
           assigned_users?: string[] | null
+          company_id?: string | null
           client_id?: string
           completed_at?: string | null
           created_at?: string
@@ -84,6 +87,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "activities_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
         ]
       }
       clients: {
@@ -93,6 +103,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          company_id: string | null
         }
         Insert: {
           color_index: number
@@ -100,6 +111,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          company_id?: string | null
         }
         Update: {
           color_index?: number
@@ -107,29 +119,109 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          company_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      companies: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          email: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          email: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       users: {
         Row: {
+          company_id: string | null
           created_at: string
           id: string
           name: string
           phone: string | null
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           id?: string
           name: string
           phone?: string | null
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           id?: string
           name?: string
           phone?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "users_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {

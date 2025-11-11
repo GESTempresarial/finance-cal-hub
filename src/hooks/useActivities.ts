@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { Activity } from '@/types';
 import { fireConfetti } from '@/lib/confetti';
@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export function useActivities() {
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [companyId, setCompanyId] = useState<string | null>(null);
 
   const formatDateOnly = (d: Date) => format(d, 'yyyy-MM-dd');
   const parseDateOnly = (s: string): Date => {
@@ -18,11 +19,27 @@ export function useActivities() {
     return 'pending';
   };
 
-  useEffect(() => {
-    fetchActivities();
+  const setCompanyContext = useCallback((id: string | null) => {
+    setCompanyId(id);
+    if (!id) {
+      setActivities([]);
+    }
   }, []);
 
-  const fetchActivities = async () => {
+  const getActiveCompanyId = () => {
+    if (!companyId) {
+      throw new Error('Empresa não definida no contexto');
+    }
+    return companyId;
+  };
+
+  const fetchActivities = useCallback(async (targetCompanyId?: string) => {
+    const activeCompanyId = targetCompanyId ?? companyId;
+    if (!activeCompanyId) {
+      setActivities([]);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('activities')
@@ -39,6 +56,7 @@ export function useActivities() {
             name
           )
         `)
+        .eq('company_id', activeCompanyId)
         .order('date', { ascending: true });
       
       if (error) throw error;
@@ -68,9 +86,15 @@ export function useActivities() {
     } catch (error) {
       console.error('Error fetching activities:', error);
     }
-  };
+  }, [companyId]);
+
+  useEffect(() => {
+    fetchActivities();
+  }, [fetchActivities]);
 
   const createActivity = async (activityData: Omit<Activity, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const activeCompanyId = getActiveCompanyId();
+
     try {
       const { data, error } = await supabase
         .from('activities')
@@ -87,7 +111,8 @@ export function useActivities() {
           is_recurring: activityData.isRecurring || false,
           recurrence_type: activityData.recurrenceType,
           started_at: activityData.startedAt?.toISOString(),
-          completed_at: activityData.completedAt?.toISOString()
+          completed_at: activityData.completedAt?.toISOString(),
+          company_id: activeCompanyId
         }])
         .select()
         .single();
@@ -124,6 +149,8 @@ export function useActivities() {
   };
 
   const updateActivity = async (id: string, updates: Partial<Activity>) => {
+    const activeCompanyId = getActiveCompanyId();
+
     try {
       const { error } = await supabase
         .from('activities')
@@ -142,7 +169,8 @@ export function useActivities() {
           started_at: updates.startedAt?.toISOString(),
           completed_at: updates.completedAt?.toISOString()
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('company_id', activeCompanyId);
       
       if (error) throw error;
       
@@ -187,11 +215,14 @@ export function useActivities() {
   };
 
   const deleteActivity = async (id: string) => {
+    const activeCompanyId = getActiveCompanyId();
+
     try {
       const { error } = await supabase
         .from('activities')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('company_id', activeCompanyId);
       
       if (error) throw error;
       setActivities(prev => prev.filter(activity => activity.id !== id));
@@ -207,5 +238,7 @@ export function useActivities() {
     updateActivity,
     updateActivityStatus,
     deleteActivity,
+    setCompanyContext,
+    refreshActivities: () => fetchActivities(),
   };
 }

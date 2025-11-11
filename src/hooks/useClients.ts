@@ -1,20 +1,31 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Client } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 
 export function useClients() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [companyId, setCompanyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchClients();
+  const setCompanyContext = useCallback((id: string | null) => {
+    setCompanyId(id);
+    if (!id) {
+      setClients([]);
+    }
   }, []);
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async (targetCompanyId?: string) => {
+    const activeCompanyId = targetCompanyId ?? companyId;
+    if (!activeCompanyId) {
+      setClients([]);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('clients')
         .select('*')
         .eq('is_active', true)
+        .eq('company_id', activeCompanyId)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
@@ -29,16 +40,25 @@ export function useClients() {
     } catch (error) {
       console.error('Error fetching clients:', error);
     }
-  };
+  }, [companyId]);
+
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
 
   const createClient = async (clientData: Omit<Client, 'id' | 'createdAt'>) => {
+    if (!companyId) {
+      throw new Error('Empresa não definida no contexto');
+    }
+
     try {
       const { data, error } = await supabase
         .from('clients')
         .insert([{
           name: clientData.name,
           color_index: clientData.colorIndex,
-          is_active: clientData.isActive
+          is_active: clientData.isActive,
+          company_id: companyId
         }])
         .select()
         .single();
@@ -60,6 +80,10 @@ export function useClients() {
   };
 
   const updateClient = async (id: string, updates: Partial<Client>) => {
+    if (!companyId) {
+      throw new Error('Empresa não definida no contexto');
+    }
+
     try {
       const { error } = await supabase
         .from('clients')
@@ -68,7 +92,8 @@ export function useClients() {
           color_index: updates.colorIndex,
           is_active: updates.isActive
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('company_id', companyId);
       
       if (error) throw error;
       setClients(prev => 
@@ -85,11 +110,16 @@ export function useClients() {
   };
 
   const deleteClient = async (id: string) => {
+    if (!companyId) {
+      throw new Error('Empresa não definida no contexto');
+    }
+
     try {
       const { error } = await supabase
         .from('clients')
         .update({ is_active: false })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('company_id', companyId);
       
       if (error) throw error;
       setClients(prev => prev.filter(client => client.id !== id));
@@ -104,5 +134,7 @@ export function useClients() {
     createClient,
     updateClient,
     deleteClient,
+    setCompanyContext,
+    refreshClients: () => fetchClients(),
   };
 }

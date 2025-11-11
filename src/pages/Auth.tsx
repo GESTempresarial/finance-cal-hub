@@ -15,7 +15,11 @@ import { motion } from 'framer-motion';
 const authSchema = z.object({
   email: z.string().email('Email inválido').min(1, 'Email é obrigatório'),
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
-  companyName: z.string().min(2, 'Nome da empresa deve ter pelo menos 2 caracteres').optional(),
+  companyName: z
+    .string()
+    .min(2, 'Nome da empresa deve ter pelo menos 2 caracteres')
+    .optional()
+    .or(z.literal('')),
 });
 
 type AuthFormData = z.infer<typeof authSchema>;
@@ -24,6 +28,7 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -55,15 +60,32 @@ export default function Auth() {
 
   const onSubmit = async (data: AuthFormData) => {
     setLoading(true);
+    // Aviso visual imediato para garantir feedback ao usuário
+    toast({
+      title: 'Processando',
+      description: isLogin ? 'Validando credenciais...' : 'Criando empresa e conta...',
+    });
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: authData, error } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
         });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erro no login:', error);
+          // mensagem mais direta para o usuário
+          toast({ title: 'Erro no login', description: error.message ?? 'Falha ao autenticar', variant: 'destructive' });
+          throw error;
+        }
+
+        // Segurança: se não vier user/session, tratar como erro
+        if (!authData || (!authData.user && !authData.session)) {
+          console.error('Resposta de login sem sessão/usuário:', authData);
+          toast({ title: 'Erro no login', description: 'Não foi possível iniciar a sessão.', variant: 'destructive' });
+          throw new Error('No session created');
+        }
 
         toast({
           title: 'Login realizado com sucesso!',
@@ -136,6 +158,42 @@ export default function Auth() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const email = form.getValues('email');
+
+    if (!email) {
+      toast({
+        title: 'Informe seu email',
+        description: 'Digite seu email antes de solicitar a redefinição de senha.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const redirectUrl = `${window.location.origin}/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Verifique seu email',
+        description: 'Enviamos um link para redefinir sua senha.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao enviar o email',
+        description: error.message ?? 'Não foi possível iniciar a recuperação.',
+        variant: 'destructive',
+      });
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -229,15 +287,11 @@ export default function Auth() {
                 <div className="flex items-center justify-end">
                   <button
                     type="button"
-                    className="text-sm text-primary hover:underline"
-                    onClick={() => {
-                      toast({
-                        title: 'Recuperação de senha',
-                        description: 'Entre em contato com o administrador.',
-                      });
-                    }}
+                    className="text-sm text-primary hover:underline disabled:opacity-50"
+                    onClick={handlePasswordReset}
+                    disabled={loading || resettingPassword}
                   >
-                    Esqueci minha senha
+                    {resettingPassword ? 'Enviando link...' : 'Esqueci minha senha'}
                   </button>
                 </div>
               )}

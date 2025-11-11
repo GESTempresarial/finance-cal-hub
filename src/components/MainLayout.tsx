@@ -18,10 +18,11 @@ interface MainLayoutProps {
   activitiesHook: ReturnType<typeof import("@/hooks/useActivities").useActivities>;
   clientsHook: ReturnType<typeof import("@/hooks/useClients").useClients>;
   timersHook: ReturnType<typeof import("@/hooks/useTimers").useTimers>;
+  companyName?: string | null;
 }
 
 
-export function MainLayout({ currentUser, users, onLogout, activitiesHook, clientsHook, timersHook }: MainLayoutProps) {
+export function MainLayout({ currentUser, users, onLogout, activitiesHook, clientsHook, timersHook, companyName }: MainLayoutProps) {
   const [activeTab, setActiveTab] = useState('calendar');
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
               <CalendarIcon className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base md:text-xl font-bold leading-tight truncate">ConectAct</h1>
+              <h1 className="text-base md:text-xl font-bold leading-tight truncate">{companyName || 'ConectAct'}</h1>
               <p className="text-xs md:text-sm text-muted-foreground truncate">
                 {currentUser.name}
               </p>
@@ -121,7 +122,8 @@ export function MainLayout({ currentUser, users, onLogout, activitiesHook, clien
 
           <Button onClick={onLogout} variant="outline" size="sm" className="order-2 gap-2 shrink-0 md:order-none">
             <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Sair</span>
+            <span className="hidden sm:inline">Trocar usuário</span>
+            <span className="sm:hidden">Sair</span>
           </Button>
         </div>
       </header>

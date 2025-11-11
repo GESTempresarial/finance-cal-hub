@@ -3,6 +3,7 @@ export interface User {
   name: string;
   phone?: string;
   createdAt: Date;
+  companyId?: string;
 }
 
 export interface Client {
