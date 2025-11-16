@@ -23,9 +23,7 @@ export interface Activity {
   clientName?: string;
   assignedTo: string;
   assignedToName?: string;
-  assignedUsers?: string[]; // Array de IDs dos usuários atribuídos
   date: Date;
-  estimatedDuration: number;
   actualDuration?: number;
   status: ActivityStatus;
   isRecurring?: boolean;

@@ -81,9 +81,7 @@ interface Activity {
   clientName: string;
   assignedTo: string;        // Responsável principal
   assignedToName: string;
-  assignedUsers?: string[];  // Múltiplos usuários
   date: Date;
-  estimatedDuration: number; // minutos
   actualDuration?: number;   // minutos reais
   status: 'pending' | 'doing' | 'completed' | 
           'waiting-client' | 'waiting-team';
@@ -102,8 +100,7 @@ interface Activity {
 
 #### **Criar Atividades**
 - ✅ Título, descrição, cliente
-- ✅ Data e tempo estimado
-- ✅ Atribuição a múltiplos usuários
+- ✅ Data
 - ✅ Responsável principal definido
 - ✅ Suporte a atividades recorrentes
 
@@ -230,7 +227,6 @@ Painel principal com 3 seções:
   - **A Fazer**: `Iniciar`
   - **Fazendo**: `Pausar/Retomar`, `Concluir`
   - **Feito**: `Reabrir`
-- Exibição de tempo estimado vs tempo real
 - Timer em tempo real para atividades em andamento
 
 #### **Outras Atividades**
@@ -292,7 +288,7 @@ await video.requestPictureInPicture();
 - 🔁 Exibir/ocultar recorrentes
 
 #### **Visibilidade:**
-- Cada usuário vê apenas atividades onde está em `assignedUsers[]`
+- Todos os usuários visualizam todas as atividades, com filtros por responsável principal
 - Independente de quem criou a atividade
 
 ---
@@ -408,14 +404,10 @@ Usuário: Conferir lançamentos e fechar
 Bot: Qual a data? (hoje, amanhã, DD/MM)
 
 Usuário: hoje
-Bot: Tempo estimado em minutos?
-
-Usuário: 120
 Bot: ✅ Atividade criada com sucesso!
      ID: ABC123
      Cliente: Empresa X
      Prazo: Hoje
-     Estimativa: 2h
 ```
 
 #### **Notificações Automáticas:**
@@ -530,7 +522,6 @@ interface ConversationState {
     title?: string;
     description?: string;
     date?: Date;
-    estimatedMinutes?: number;
   };
   createdAt: Date;
   expiresAt: Date;          // Expira após 10 min de inatividade
@@ -768,7 +759,6 @@ Sistema totalmente responsivo:
    - Atribuir para equipe
 
 4. **Acompanhamento:**
-   - Ver tempo estimado vs real
    - Filtrar por cliente/status
    - Reagendar se necessário
 
@@ -856,9 +846,7 @@ O sistema é um **gerenciador de tarefas orientado a tempo** com:
 - ✅ Timer integrado com persistência
 - ✅ Recorrências automáticas (diária, semanal, mensal)
 - ✅ Status detalhados de workflow
-- ✅ Rastreamento de tempo estimado vs real
 - ✅ Visualização por calendário mensal
-- ✅ Atribuição multi-usuário
 - ✅ Editor de texto rico para descrições
 - ✅ Picture-in-Picture com timer flutuante
 - ✅ Integração via WhatsApp (em desenvolvimento)

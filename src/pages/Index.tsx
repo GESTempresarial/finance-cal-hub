@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '@/types';
 import { Session } from '@supabase/supabase-js';
-import { UserLogin } from '@/components/UserLogin';
 import { MainLayout } from '@/components/MainLayout';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -16,7 +15,6 @@ interface IndexProps {
 
 const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,7 +113,6 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
           setSession(null);
           setCompanyId(null);
           setCompanyName(null);
-          setCurrentUser(null);
           setUsers([]);
           setActivitiesCompanyContext(null);
           setClientsCompanyContext(null);
@@ -145,10 +142,6 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     return () => subscription.unsubscribe();
   }, [navigate, loadCompanyContext, setActivitiesCompanyContext, setClientsCompanyContext]);
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-  };
-
   const handleCreateUser = async (name: string, phone?: string) => {
     if (!companyId) {
       console.error('Não é possível criar usuário sem empresa definida.');
@@ -158,21 +151,21 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .insert([{ name, phone: phone?.trim() || null, company_id: companyId }])
+        .insert([{ name: name.trim(), phone: phone?.trim() || null, company_id: companyId }])
         .select()
         .single();
       
       if (error) throw error;
-      const newUser = {
+      const newUser: User = {
         id: data.id,
         name: data.name,
-        phone: data.phone,
+        phone: data.phone || undefined,
         createdAt: new Date(data.created_at),
         companyId: data.company_id || undefined,
       };
       setUsers(prev => [...prev, newUser]);
     } catch (error) {
-      console.error('Error creating user:', error);
+      console.error('Erro ao criar usuário:', error);
     }
   };
 
@@ -180,17 +173,18 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     if (!companyId) return;
     const payload: { name?: string; phone?: string | null } = {};
     if (typeof updates.name !== 'undefined') {
-      const trimmedName = updates.name?.trim();
+      const trimmedName = updates.name.trim();
       if (!trimmedName) {
-        throw new Error('Nome não pode ser vazio.');
+        console.error('Nome não pode ser vazio.');
+        return;
       }
       payload.name = trimmedName;
     }
-    if (typeof updates.phone !== 'undefined') payload.phone = updates.phone || null;
-
-    if (Object.keys(payload).length === 0) {
-      return;
+    if (typeof updates.phone !== 'undefined') {
+      payload.phone = updates.phone?.trim() || null;
     }
+
+    if (Object.keys(payload).length === 0) return;
 
     try {
       const { data, error } = await supabase
@@ -214,29 +208,13 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
             : user
         )
       );
-
-      setCurrentUser(prev =>
-        prev && prev.id === id
-          ? {
-              ...prev,
-              name: data.name,
-              phone: data.phone || undefined,
-            }
-          : prev
-      );
     } catch (error) {
       console.error('Erro ao atualizar usuário:', error);
-      throw error;
     }
-  };
-
-  const handleBackToUserSelection = () => {
-    setCurrentUser(null);
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setCurrentUser(null);
     setSession(null);
     setCompanyId(null);
     setCompanyName(null);
@@ -257,23 +235,12 @@ const Index = ({ activitiesHook, clientsHook, timersHook }: IndexProps) => {
     );
   }
 
-  if (!currentUser) {
-    return (
-      <UserLogin
-        users={users}
-        onLogin={handleLogin}
-        onCreateUser={handleCreateUser}
-        onUpdateUser={handleUpdateUser}
-        onSignOut={handleSignOut}
-      />
-    );
-  }
-
   return (
     <MainLayout
-      currentUser={currentUser}
       users={users}
-      onLogout={handleBackToUserSelection}
+      onCreateUser={handleCreateUser}
+      onUpdateUser={handleUpdateUser}
+      onLogout={handleSignOut}
       activitiesHook={activitiesHook}
       clientsHook={clientsHook}
       timersHook={timersHook}

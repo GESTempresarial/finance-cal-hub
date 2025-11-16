@@ -2,7 +2,7 @@ import { Activity, Client, STATUS_LABELS, STATUS_COLORS } from '@/types';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Pause, CheckCircle2 } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ActivityCardProps {
@@ -23,8 +23,6 @@ export function ActivityCard({
   isTimerActive 
 }: ActivityCardProps) {
   const isOverdue = new Date(activity.date) < new Date() && activity.status !== 'completed';
-  const isShortTask = activity.estimatedDuration <= 30;
-  
   // Função auxiliar para obter a cor baseada no status
   const getStatusColor = (status: Activity["status"]) => {
     if (status === "pending") return "hsl(0, 84%, 60%)"; // Vermelho - A fazer
@@ -51,8 +49,7 @@ export function ActivityCard({
   return (
     <Card 
       className={cn(
-        "p-3 hover:shadow-medium transition-all duration-200 cursor-pointer border-l-4",
-        isShortTask ? "min-h-[80px]" : "min-h-[120px]",
+        "p-3 hover:shadow-medium transition-all duration-200 cursor-pointer border-l-4 min-h-[120px]",
         isOverdue && "ring-2 ring-destructive/30 border-destructive",
         activity.status === 'completed' && "opacity-75"
       )}
@@ -89,15 +86,11 @@ export function ActivityCard({
                 )}
               </Button>
             )}
-            <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
-                {activity.estimatedDuration}min
-              </span>
           </div>
         </div>
 
         {/* Description */}
-        {activity.description && !isShortTask && (
+        {activity.description && (
           <p className="text-xs text-muted-foreground line-clamp-2">
             {activity.description}
           </p>

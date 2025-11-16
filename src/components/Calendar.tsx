@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Client, STATUS_LABELS, User } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
@@ -17,11 +17,20 @@ import { Badge } from '@/components/ui/badge';
 import { fireConfetti } from '@/lib/confetti';
 import { RichTextEditor } from '@/components/RichTextEditor';
 
+const adjustDateForWeekend = (date: Date) => {
+  const adjusted = new Date(date);
+  while (adjusted.getDay() === 0 || adjusted.getDay() === 6) {
+    adjusted.setDate(adjusted.getDate() - 1);
+  }
+  return adjusted;
+};
+
 interface CalendarProps {
   activities: Activity[];
   clients: Client[];
-  currentUser: string;
   users: User[];
+  selectedUserIds: string[];
+  onSelectedUsersChange: Dispatch<SetStateAction<string[]>>;
   onStatusChange: (activityId: string, status: Activity['status']) => void;
   onStartTimer: (activityId: string) => void;
   onStopTimer: (activityId: string) => void;
@@ -36,8 +45,9 @@ interface CalendarProps {
 export function Calendar({ 
   activities, 
   clients, 
-  currentUser,
   users,
+  selectedUserIds,
+  onSelectedUsersChange,
   onStatusChange, 
   onStartTimer, 
   onStopTimer,
@@ -53,6 +63,7 @@ export function Calendar({
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
   const [draggedInfo, setDraggedInfo] = useState<{ id: string; dateKey: string } | null>(null);
   const [dropIndicator, setDropIndicator] = useState<{ targetId: string; position: 'before' | 'after' } | null>(null);
+  const [dayScrollStates, setDayScrollStates] = useState<Record<string, boolean>>({});
   
   // Estado para edição de atividade
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -61,10 +72,9 @@ export function Calendar({
     description?: string;
     status: Activity['status'];
     assignedTo: string;
-    selectedUsers: string[];
     clientId: string;
     date: Date;
-  }>({ title: '', description: '', status: 'pending', assignedTo: '', selectedUsers: [], clientId: '', date: new Date() });
+  }>({ title: '', description: '', status: 'pending', assignedTo: '', clientId: '', date: new Date() });
   const [recurrenceEdit, setRecurrenceEdit] = useState<{
     enabled: boolean;
     type: 'daily' | 'weekly' | 'monthly';
@@ -122,6 +132,33 @@ export function Calendar({
     return "hsl(0, 0%, 50%)"; // Cinza padrão
   };
 
+  const getStatusBackgroundColor = (status: Activity['status']) => {
+    if (status === 'pending') return 'hsl(0, 84%, 95%)'; // Vermelho claro
+    if (status === 'doing') return 'hsl(45, 93%, 90%)'; // Amarelo claro
+    if (status === 'completed') return 'hsl(142, 71%, 92%)'; // Verde claro
+    return 'hsl(210, 16%, 92%)'; // Cinza claro padrão
+  };
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, User>();
+    users.forEach((user) => map.set(user.id, user));
+    return map;
+  }, [users]);
+
+  const toggleUserFilter = (userId: string) => {
+    onSelectedUsersChange((prev) => {
+      if (prev.includes(userId)) {
+        return prev.filter((id) => id !== userId);
+      }
+      return [...prev, userId];
+    });
+  };
+
+  const isActivityVisibleForSelectedUsers = (activity: Activity) => {
+    if (!selectedUserIds.length) return true;
+    return selectedUserIds.includes(activity.assignedTo);
+  };
+
   // Abrir modal de edição
   const handleActivityClick = (activity: Activity) => {
     setEditingActivity(activity);
@@ -130,7 +167,6 @@ export function Calendar({
       description: activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '',
       status: activity.status,
       assignedTo: activity.assignedTo,
-      selectedUsers: activity.assignedUsers || [activity.assignedTo],
       clientId: activity.clientId,
       date: new Date(activity.date),
     });
@@ -190,7 +226,6 @@ export function Calendar({
       description: `${cleanOrig}${recurrenceBlock}`.trim(),
       status: finalStatus,
       assignedTo: editData.assignedTo,
-      assignedUsers: editData.selectedUsers,
       isRecurring: recurrenceEdit.enabled,
       recurrenceType: recurrenceEdit.enabled ? recurrenceEdit.type : undefined,
       clientId: editData.clientId,
@@ -213,10 +248,8 @@ export function Calendar({
     dayStart.setHours(0,0,0,0);
 
     return activities.filter(activity => {
-      // Filtrar apenas atividades atribuídas ao usuário atual
-      const isAssignedToCurrentUser = activity.assignedUsers?.includes(currentUser) || 
-                                       activity.assignedTo === currentUser;
-      if (!isAssignedToCurrentUser) return false;
+      const isVisibleForUsers = isActivityVisibleForSelectedUsers(activity);
+      if (!isVisibleForUsers) return false;
       const start = new Date(activity.date);
       start.setHours(0,0,0,0);
 
@@ -225,11 +258,14 @@ export function Calendar({
 
       // Recorrente: usar metadados
       const meta = parseRecurrence(activity);
+      const type = activity.recurrenceType || meta.type;
       const end = meta.endDate ? new Date(meta.endDate) : start;
       end.setHours(0,0,0,0);
-      if (dayStart < start || dayStart > end) return false;
+      const startBoundary = type === 'monthly'
+        ? adjustDateForWeekend(new Date(start))
+        : start;
+      if (dayStart < startBoundary || dayStart > end) return false;
 
-      const type = activity.recurrenceType || meta.type;
       if (type === 'daily') {
         const includeWeekends = (meta as any).includeWeekends !== false; // default true
         const wd = dayStart.getDay();
@@ -242,7 +278,11 @@ export function Calendar({
       }
       if (type === 'monthly') {
         const monthDays = (meta.monthDays && meta.monthDays.length) ? meta.monthDays : [start.getDate()];
-        return monthDays.includes(dayStart.getDate());
+        return monthDays.some(monthDay => {
+          const occurrence = new Date(dayStart.getFullYear(), dayStart.getMonth(), monthDay);
+          const adjustedOccurrence = adjustDateForWeekend(occurrence);
+          return isSameDay(adjustedOccurrence, dayStart);
+        });
       }
       return isSameDay(start, dayStart);
     });
@@ -331,47 +371,82 @@ export function Calendar({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Calendar Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 md:p-6 border-b bg-muted/30 gap-3 sm:gap-0">
-        <div className="flex items-center gap-2 md:gap-4 w-full sm:w-auto">
-          <div className="flex flex-col flex-1 sm:flex-initial">
-            <h2 className="text-lg md:text-2xl font-bold truncate">
-              {view === 'month'
-                ? format(currentDate, 'MMMM yyyy', { locale: ptBR })
-                : `Semana de ${format(periodStart, 'dd/MM', { locale: ptBR })} a ${format(periodEnd, 'dd/MM', { locale: ptBR })}`}
-            </h2>
-            <div className="mt-1 inline-flex items-center gap-2">
-              <Button size="sm" variant={view === 'week' ? 'default' : 'outline'} onClick={() => setView('week')}>Semana</Button>
-              <Button size="sm" variant={view === 'month' ? 'default' : 'outline'} onClick={() => setView('month')}>Mês</Button>
+      <div className="flex flex-col gap-3 p-3 md:p-6 border-b bg-muted/30 shrink-0">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-6">
+          <div className="flex items-center gap-2 md:gap-4 w-full lg:w-auto order-1">
+            <div className="flex flex-col flex-1">
+              <h2 className="text-lg md:text-2xl font-bold truncate">
+                {view === 'month'
+                  ? format(currentDate, 'MMMM yyyy', { locale: ptBR })
+                  : `Semana de ${format(periodStart, 'dd/MM', { locale: ptBR })} a ${format(periodEnd, 'dd/MM', { locale: ptBR })}`}
+              </h2>
+              <div className="mt-1 inline-flex items-center gap-2">
+                <Button size="sm" variant={view === 'week' ? 'default' : 'outline'} onClick={() => setView('week')}>Semana</Button>
+                <Button size="sm" variant={view === 'month' ? 'default' : 'outline'} onClick={() => setView('month')}>Mês</Button>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('prev')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('next')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('prev')}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('next')}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+
+          <div className="w-full order-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1 font-semibold">
+              Filtrar atividades por usuário
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {users.map((user) => {
+                const isChecked = selectedUserIds.includes(user.id);
+                return (
+                  <label
+                    key={user.id}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs cursor-pointer transition-colors',
+                      isChecked
+                        ? 'bg-primary/10 border-primary/40 text-foreground'
+                        : 'bg-card border-muted text-muted-foreground hover:border-primary/30'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={isChecked}
+                      onChange={() => toggleUserFilter(user.id)}
+                    />
+                    <span className="font-medium truncate max-w-[120px]">{user.name}</span>
+                  </label>
+                );
+              })}
+              {users.length === 0 && (
+                <span className="text-xs text-muted-foreground">Nenhum usuário encontrado</span>
+              )}
+            </div>
           </div>
+          
+          <Button onClick={onCreateActivity} className="gap-2 w-full lg:w-auto order-3" size="sm">
+            <Plus className="h-4 w-4" />
+            <span className="sm:inline">Nova Atividade</span>
+          </Button>
         </div>
-        
-        <Button onClick={onCreateActivity} className="gap-2 w-full sm:w-auto" size="sm">
-          <Plus className="h-4 w-4" />
-          <span className="sm:inline">Nova Atividade</span>
-        </Button>
       </div>
 
       {/* Days of Week Header */}
-      <div className="grid grid-cols-7 border-b bg-muted/50">
+      <div className="grid grid-cols-7 border-b bg-muted/50 shrink-0">
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, index) => (
           <div key={day} className="p-2 md:p-3 text-center font-medium text-xs md:text-sm">
             <span className="hidden sm:inline">{day}</span>
@@ -382,14 +457,18 @@ export function Calendar({
 
       {/* Calendar Grid */}
       <div className={cn(
-        view === 'month'
-          ? 'flex-1 grid grid-cols-7 auto-rows-fr'
-          : 'grid grid-cols-7'
+        "flex-1 min-h-0",
+        view === 'month' ? 'overflow-y-auto calendar-scrollable' : 'overflow-hidden'
       )}>
+        <div 
+          className={cn(
+            'grid grid-cols-7',
+            view === 'week' && 'h-full grid-rows-1'
+          )}
+          style={view === 'month' ? { gridAutoRows: '200px' } : undefined}
+        >
         {days.map((day) => {
           const dayActivities = getOrderedActivitiesForDay(day);
-          const maxVisible = view === 'month' ? 5 : 3;
-          const showScrollHint = dayActivities.length > maxVisible;
           const isCurrentMonth = view === 'month' ? isSameMonth(day, currentDate) : true;
           
           return (
@@ -397,7 +476,7 @@ export function Calendar({
               key={day.toISOString()}
               className={cn(
                 'border-r border-b p-1 md:p-2 flex flex-col relative',
-                view === 'month' && 'min-h-[80px] md:min-h-[120px]',
+                view === 'week' ? 'overflow-hidden' : 'overflow-hidden',
                 !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
                 isToday(day) && 'bg-primary/5 border-primary/20'
               )}
@@ -463,13 +542,41 @@ export function Calendar({
               <div
                 className={cn(
                   'space-y-1',
-                  view === 'week' && 'space-y-2 mt-1 flex-1 max-h-64 overflow-y-auto pr-1 pb-6 calendar-scrollable',
-                  view === 'month' && 'mt-1 flex-1 max-h-48 overflow-y-auto pr-1 pb-6 calendar-scrollable'
+                  view === 'week' && 'space-y-2 mt-1 flex-1 overflow-y-auto pr-1 pb-2 calendar-scrollable',
+                  view === 'month' && 'mt-1 flex-1 overflow-y-auto pr-1 pb-6 calendar-scrollable'
                 )}
+                ref={(el) => {
+                  if (el) {
+                    const dateKey = format(day, 'yyyy-MM-dd');
+                    const hasOverflow = el.scrollHeight > el.clientHeight;
+                    const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 5;
+                    const shouldShow = hasOverflow && !isAtBottom;
+                    setDayScrollStates(prev => {
+                      if (prev[dateKey] !== shouldShow) {
+                        return { ...prev, [dateKey]: shouldShow };
+                      }
+                      return prev;
+                    });
+                  }
+                }}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const hasOverflow = el.scrollHeight > el.clientHeight;
+                  const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 5;
+                  const shouldShow = hasOverflow && !isAtBottom;
+                  setDayScrollStates(prev => {
+                    if (prev[dateKey] !== shouldShow) {
+                      return { ...prev, [dateKey]: shouldShow };
+                    }
+                    return prev;
+                  });
+                }}
               >
                 {dayActivities.map((activity) => {
                   const client = getClientById(activity.clientId);
                   if (!client) return null;
+                  const assigneeName = userMap.get(activity.assignedTo)?.name;
 
                   // Card minimal: cor do status, nome e status
                   const dateStr = format(day, 'yyyy-MM-dd');
@@ -494,8 +601,8 @@ export function Calendar({
                       
                       <div
                         className={cn(
-                          'cursor-pointer rounded bg-card hover:bg-primary/10 flex border border-muted text-xs md:text-sm transition-all',
-                          view === 'week' ? 'px-2 py-1 md:py-2 flex-col gap-1' : 'px-1 md:px-2 py-0.5 md:py-1 items-center gap-1 md:gap-2',
+                          'cursor-pointer rounded bg-card hover:bg-primary/10 flex border border-muted transition-all',
+                          view === 'week' ? 'px-2 py-1 md:py-2 flex-col gap-1 text-xs md:text-sm' : 'px-1.5 py-1 items-center gap-1.5 text-[10px] md:text-xs',
                           draggedInfo?.id === activity.id && 'opacity-50'
                         )}
                         title={activity.title}
@@ -550,21 +657,23 @@ export function Calendar({
                         }}
                         style={{
                           borderLeftWidth: '3px',
-                          borderLeftColor: getStatusColor(displayStatus)
+                          borderLeftColor: getStatusColor(displayStatus),
+                          backgroundColor: getStatusBackgroundColor(displayStatus)
                         }}
                       >
                         {view === 'week' ? (
-                          <>
+                          <div className="flex flex-col gap-0.5">
                             <div className="flex items-center gap-1 md:gap-2">
                               <span className="truncate font-semibold text-xs md:text-sm flex-1">{activity.title}</span>
                               {isCompletedOccurrence && <span className="text-xs md:text-sm">✔️</span>}
                             </div>
-                            <span className="text-xs text-muted-foreground">{client.name}</span>
-                          </>
+                            <span className="text-xs text-muted-foreground truncate">{client.name}</span>
+                            <span className="text-xs text-muted-foreground truncate">{assigneeName || 'Sem responsável'}</span>
+                          </div>
                         ) : (
                           <>
-                            <span className="truncate font-medium text-xs flex-1">{activity.title}</span>
-                            <span className="text-xs">{isCompletedOccurrence ? '✔️' : ''}</span>
+                            <span className="truncate font-medium text-[10px] md:text-xs flex-1 leading-tight">{activity.title}</span>
+                            {isCompletedOccurrence && <span className="text-[10px] md:text-xs shrink-0">✔️</span>}
                           </>
                         )}
                       </div>
@@ -578,7 +687,8 @@ export function Calendar({
                 })}
               </div>
 
-              {showScrollHint && (
+              {/* Indicador de scroll */}
+              {dayScrollStates[format(day, 'yyyy-MM-dd')] && (
                 <div className="pointer-events-none absolute inset-x-1 bottom-0 z-10 flex flex-col items-stretch text-[10px] text-muted-foreground">
                   <div className="mx-auto mb-1 inline-flex items-center gap-1 rounded-full bg-muted/90 px-2 py-1 shadow-sm ring-1 ring-border/40">
                     <ChevronDown className="h-3 w-3" />
@@ -589,6 +699,7 @@ export function Calendar({
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Edit Activity Dialog */}
@@ -807,41 +918,6 @@ export function Calendar({
                     )}
                   </div>
                   
-                  {/* Seleção de Usuários */}
-                  <div className="space-y-3 border rounded-md p-3">
-                    <Label>Usuários que podem ver esta atividade</Label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {users.map((user) => (
-                        <div key={user.id} className="flex items-center gap-2">
-                          <input
-                            id={`edit-user-${user.id}`}
-                            type="checkbox"
-                            checked={editData.selectedUsers.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditData(prev => ({
-                                  ...prev,
-                                  selectedUsers: [...prev.selectedUsers, user.id]
-                                }));
-                              } else {
-                                setEditData(prev => ({
-                                  ...prev,
-                                  selectedUsers: prev.selectedUsers.filter(id => id !== user.id)
-                                }));
-                              }
-                            }}
-                            className="cursor-pointer"
-                          />
-                          <Label htmlFor={`edit-user-${user.id}`} className="cursor-pointer font-normal">
-                            {user.name}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                    {editData.selectedUsers.length === 0 && (
-                      <p className="text-xs text-destructive">Selecione pelo menos um usuário</p>
-                    )}
-                  </div>
                   
                   <div className="space-y-2">
                     <Label>Status Atual</Label>

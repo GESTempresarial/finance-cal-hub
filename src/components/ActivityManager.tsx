@@ -49,8 +49,8 @@ import { InlineRichTextView } from "@/components/InlineRichTextView";
 interface ActivityManagerProps {
   activities: Activity[];
   clients: Client[];
-  currentUser: User;
   users: User[];
+  visibleUserIds?: string[];
   onCreateActivity: (
     activity: Omit<Activity, "id" | "createdAt" | "updatedAt">
   ) => void;
@@ -82,8 +82,8 @@ interface ActivityManagerProps {
 export function ActivityManager({
   activities,
   clients,
-  currentUser,
   users,
+  visibleUserIds,
   onCreateActivity,
   onUpdateActivity,
   onDeleteActivity,
@@ -99,6 +99,16 @@ export function ActivityManager({
   onSelectActivity,
   timersHook,
 }: ActivityManagerProps) {
+  const defaultAssigneeId = users[0]?.id ?? "";
+  const resolvedVisibleUserIds = useMemo(() => {
+    if (visibleUserIds && visibleUserIds.length) {
+      return visibleUserIds;
+    }
+    if (users.length) {
+      return users.map((user) => user.id);
+    }
+    return [];
+  }, [visibleUserIds, users]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
@@ -465,10 +475,8 @@ export function ActivityManager({
     title: "",
     description: "",
     clientId: "",
-    assigneeId: currentUser.id,
-    selectedUsers: [currentUser.id] as string[], // Usuários selecionados
+    assigneeId: defaultAssigneeId,
     dueDate: new Date(),
-    estimatedMinutes: 60,
     isRecurring: false,
     recurrenceType: "daily" as "daily" | "weekly" | "monthly",
     endDate: new Date(),
@@ -492,12 +500,29 @@ export function ActivityManager({
     }
   }, [createDate]);
 
+  useEffect(() => {
+    if (!users.length) return;
+    setFormData((prev) => {
+      const availableIds = users.map((user) => user.id);
+      const nextAssignee = availableIds.includes(prev.assigneeId)
+        ? prev.assigneeId
+        : users[0].id;
+      if (nextAssignee === prev.assigneeId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        assigneeId: nextAssignee,
+      };
+    });
+  }, [users]);
+
   const filteredActivities = activities.filter((activity) => {
-    // Filtrar apenas atividades atribuídas ao usuário atual
-    const isAssignedToCurrentUser =
-      activity.assignedUsers?.includes(currentUser.id) ||
-      activity.assignedTo === currentUser.id;
-    if (!isAssignedToCurrentUser) return false;
+    const matchesUserFilter =
+      resolvedVisibleUserIds.length === 0
+        ? true
+        : resolvedVisibleUserIds.includes(activity.assignedTo);
+    if (!matchesUserFilter) return false;
 
     const matchesSearch =
       activity.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -658,12 +683,11 @@ export function ActivityManager({
     () => activities.find((a) => a.id === selectedActivityId) || null,
     [activities, selectedActivityId]
   );
-  const [editData, setEditData] = useState<{
+const [editData, setEditData] = useState<{
     title: string;
     description?: string;
     status: Activity["status"];
     assignedTo: string;
-    selectedUsers: string[];
     clientId: string;
     date: Date;
   }>({
@@ -671,7 +695,6 @@ export function ActivityManager({
     description: "",
     status: "pending",
     assignedTo: "",
-    selectedUsers: [],
     clientId: "",
     date: new Date(),
   });
@@ -702,9 +725,6 @@ export function ActivityManager({
             .trim() || "",
         status: selectedActivity.status,
         assignedTo: selectedActivity.assignedTo,
-        selectedUsers: selectedActivity.assignedUsers || [
-          selectedActivity.assignedTo,
-        ],
         clientId: selectedActivity.clientId,
         date: new Date(selectedActivity.date),
       });
@@ -728,9 +748,11 @@ export function ActivityManager({
     if (
       !formData.title.trim() ||
       !formData.clientId ||
-      formData.selectedUsers.length === 0
+      !formData.assigneeId
     )
       return;
+
+    const assignee = users.find((user) => user.id === formData.assigneeId);
 
     // Se recorrente, embute metadados na descrição para o calendário renderizar ocorrências
     let description = formData.description;
@@ -759,11 +781,9 @@ export function ActivityManager({
       description,
       clientId: formData.clientId,
       assignedTo: formData.assigneeId,
-      assignedToName: currentUser.name,
-      assignedUsers: formData.selectedUsers,
+      assignedToName: assignee?.name,
       clientName: clients.find((c) => c.id === formData.clientId)?.name || "",
       date: formData.dueDate,
-      estimatedDuration: formData.estimatedMinutes,
       status: "pending",
       isRecurring: formData.isRecurring,
       recurrenceType: formData.isRecurring
@@ -772,14 +792,13 @@ export function ActivityManager({
     });
 
     // Reset form
+    const fallbackAssignee = users[0]?.id ?? "";
     setFormData({
       title: "",
       description: "",
       clientId: "",
-      assigneeId: currentUser.id,
-      selectedUsers: [currentUser.id],
+      assigneeId: fallbackAssignee,
       dueDate: new Date(),
-      estimatedMinutes: 60,
       isRecurring: false,
       recurrenceType: "daily",
       endDate: new Date(),
@@ -804,7 +823,7 @@ export function ActivityManager({
   };
 
   const handleSaveEdit = async () => {
-    if (!selectedActivity || !editData.title.trim() || !editData.clientId || editData.selectedUsers.length === 0) {
+    if (!selectedActivity || !editData.title.trim() || !editData.clientId || !editData.assignedTo) {
       return;
     }
 
@@ -832,7 +851,6 @@ export function ActivityManager({
       description: finalDescription,
       clientId: editData.clientId,
       assignedTo: editData.assignedTo,
-      assignedUsers: editData.selectedUsers,
       date: editData.date,
       status: editData.status,
       isRecurring: recurrenceEdit.enabled,
@@ -1038,9 +1056,6 @@ export function ActivityManager({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pt-2 border-t">
                       <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
                         <span>📅 Hoje</span>
-                        <span>
-                          ⏱️ {activity.estimatedDuration} min estimado
-                        </span>
                         {displayStatus === "completed" &&
                           activity.actualDuration && (
                             <span className="text-green-600 font-medium">
@@ -1370,9 +1385,6 @@ export function ActivityManager({
                               locale: ptBR,
                             })}
                           </span>
-                          <span>
-                            ⏱️ {activity.estimatedDuration} min estimado
-                          </span>
                           {displayStatus === "completed" &&
                             activity.actualDuration && (
                               <span className="text-green-600 font-medium">
@@ -1614,9 +1626,6 @@ export function ActivityManager({
                               locale: ptBR,
                             })}
                           </span>
-                          <span>
-                            ⏱️ {activity.estimatedDuration} min estimado
-                          </span>
                           {displayStatus === "completed" &&
                             activity.actualDuration && (
                               <span className="text-green-600 font-medium">
@@ -1856,9 +1865,6 @@ export function ActivityManager({
                               locale: ptBR,
                             })}
                           </span>
-                          <span>
-                            ⏱️ {activity.estimatedDuration} min estimado
-                          </span>
                           {activity.actualDuration && (
                             <span className="text-green-600 font-medium">
                               ✅ {activity.actualDuration} min realizado
@@ -2045,7 +2051,6 @@ export function ActivityManager({
                               })}
                             </span>
                           )}
-                          <span>⏱️ {activity.estimatedDuration} min</span>
                           {meta.completedDates &&
                             meta.completedDates.length > 0 && (
                               <span>
@@ -2254,92 +2259,32 @@ export function ActivityManager({
               />
             </div>
 
-            {/* Seleção de Usuários */}
-            <div className="space-y-3 border rounded-md p-3">
-              <Label>Atribuir a Usuários (quem verá esta atividade)</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {users.map((user) => (
-                  <div key={user.id} className="flex items-center gap-2">
-                    <input
-                      id={`user-${user.id}`}
-                      type="checkbox"
-                      checked={formData.selectedUsers.includes(user.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData((prev) => ({
-                            ...prev,
-                            selectedUsers: [...prev.selectedUsers, user.id],
-                          }));
-                        } else {
-                          setFormData((prev) => ({
-                            ...prev,
-                            selectedUsers: prev.selectedUsers.filter(
-                              (id) => id !== user.id
-                            ),
-                          }));
-                        }
-                      }}
-                      className="cursor-pointer"
-                    />
-                    <Label
-                      htmlFor={`user-${user.id}`}
-                      className="cursor-pointer font-normal"
-                    >
-                      {user.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-              {formData.selectedUsers.length === 0 && (
-                <p className="text-xs text-destructive">
-                  Selecione pelo menos um usuário
-                </p>
-              )}
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Data</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(formData.dueDate, "dd/MM/yyyy", { locale: ptBR })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.dueDate}
-                      onSelect={(date) =>
-                        date &&
-                        setFormData((prev) => ({ ...prev, dueDate: date }))
-                      }
-                      initialFocus
-                      className="pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="estimatedMinutes">Tempo Estimado (min)</Label>
-                <Input
-                  id="estimatedMinutes"
-                  type="number"
-                  value={formData.estimatedMinutes}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      estimatedMinutes: Number(e.target.value),
-                    }))
-                  }
-                  min="1"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {format(formData.dueDate, "dd/MM/yyyy", { locale: ptBR })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.dueDate}
+                    onSelect={(date) =>
+                      date &&
+                      setFormData((prev) => ({ ...prev, dueDate: date }))
+                    }
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Recorrência */}
@@ -2816,41 +2761,6 @@ export function ActivityManager({
                     )}
                   </div>
                   
-                  {/* Seleção de Usuários */}
-                  <div className="space-y-3 border rounded-md p-3">
-                    <Label>Usuários que podem ver esta atividade</Label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {users.map((user) => (
-                        <div key={user.id} className="flex items-center gap-2">
-                          <input
-                            id={`edit-user-${user.id}`}
-                            type="checkbox"
-                            checked={editData.selectedUsers.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditData(prev => ({
-                                  ...prev,
-                                  selectedUsers: [...prev.selectedUsers, user.id]
-                                }));
-                              } else {
-                                setEditData(prev => ({
-                                  ...prev,
-                                  selectedUsers: prev.selectedUsers.filter(id => id !== user.id)
-                                }));
-                              }
-                            }}
-                            className="cursor-pointer"
-                          />
-                          <Label htmlFor={`edit-user-${user.id}`} className="cursor-pointer font-normal">
-                            {user.name}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                    {editData.selectedUsers.length === 0 && (
-                      <p className="text-xs text-destructive">Selecione pelo menos um usuário</p>
-                    )}
-                  </div>
                   
                   <div className="space-y-2">
                     <Label>Status Atual</Label>
