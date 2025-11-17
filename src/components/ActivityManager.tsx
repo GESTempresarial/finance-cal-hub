@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Client, User, STATUS_LABELS } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -19,32 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Plus,
-  Calendar as CalendarIcon,
-  Filter,
-  Search,
-  Play,
-  Pause,
-  CheckCircle,
-  Clock,
-  Edit,
-  Trash2,
-  RotateCcw,
-  Monitor,
-} from "lucide-react";
+import { Plus, Filter, Search, Play, Pause, CheckCircle, Clock, Edit, Trash2, RotateCcw, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { fireConfetti } from "@/lib/confetti";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { InlineRichTextView } from "@/components/InlineRichTextView";
+import { DatePicker } from "@/components/DatePicker";
 
 interface ActivityManagerProps {
   activities: Activity[];
@@ -484,7 +465,6 @@ export function ActivityManager({
     includeWeekends: true, // nova flag para recorrências diárias
     monthDay: new Date().getDate(),
   });
-
   // Se veio uma data do calendário, aplicar uma única vez
   useEffect(() => {
     if (createDate) {
@@ -683,7 +663,8 @@ export function ActivityManager({
     () => activities.find((a) => a.id === selectedActivityId) || null,
     [activities, selectedActivityId]
   );
-const [editData, setEditData] = useState<{
+
+  const [editData, setEditData] = useState<{
     title: string;
     description?: string;
     status: Activity["status"];
@@ -2224,28 +2205,41 @@ const [editData, setEditData] = useState<{
                   </div>
                 )}
               </div>
-            </div>
+              
+              {/* Responsável Principal */}
+              <div className="space-y-2">
+                <Label htmlFor="assignee">Responsável Principal*</Label>
+                <Select
+                  value={formData.assigneeId}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, assigneeId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Responsável Principal */}
-            <div className="space-y-2">
-              <Label htmlFor="assignee">Responsável Principal*</Label>
-              <Select
-                value={formData.assigneeId}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, assigneeId: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o responsável" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Data */}
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <DatePicker
+                  value={formData.dueDate}
+                  onChange={(date) => {
+                    if (date) {
+                      setFormData((prev) => ({ ...prev, dueDate: date }));
+                    }
+                  }}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -2257,34 +2251,6 @@ const [editData, setEditData] = useState<{
                 }
                 placeholder="Descreva a atividade com detalhes, checklists, listas..."
               />
-            </div>
-
-
-            <div className="space-y-2">
-              <Label>Data</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(formData.dueDate, "dd/MM/yyyy", { locale: ptBR })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.dueDate}
-                    onSelect={(date) =>
-                      date &&
-                      setFormData((prev) => ({ ...prev, dueDate: date }))
-                    }
-                    initialFocus
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
             </div>
 
             {/* Recorrência */}
@@ -2347,31 +2313,14 @@ const [editData, setEditData] = useState<{
 
                   <div className="space-y-2">
                     <Label>Até</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start text-left font-normal"
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {format(formData.endDate, "dd/MM/yyyy", {
-                            locale: ptBR,
-                          })}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={formData.endDate}
-                          onSelect={(date) =>
-                            date &&
-                            setFormData((prev) => ({ ...prev, endDate: date }))
-                          }
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={formData.endDate}
+                      onChange={(date) => {
+                        if (date) {
+                          setFormData((prev) => ({ ...prev, endDate: date }));
+                        }
+                      }}
+                    />
                   </div>
 
                   {formData.recurrenceType === "weekly" && (
@@ -2598,23 +2547,14 @@ const [editData, setEditData] = useState<{
 
                   <div className="space-y-2">
                     <Label>Data</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {format(editData.date, 'dd/MM/yyyy', { locale: ptBR })}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={editData.date}
-                          onSelect={(date) => date && setEditData(prev => ({...prev, date: date}))}
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={editData.date}
+                      onChange={(date) => {
+                        if (date) {
+                          setEditData((prev) => ({ ...prev, date }));
+                        }
+                      }}
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -2680,23 +2620,17 @@ const [editData, setEditData] = useState<{
                         </div>
                         <div className="space-y-2">
                           <Label>Até</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(recurrenceEdit.endDate, 'dd/MM/yyyy', { locale: ptBR })}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={recurrenceEdit.endDate}
-                                onSelect={(date) => date && setRecurrenceEdit(r => ({...r, endDate: date}))}
-                                initialFocus
-                                className="pointer-events-auto"
-                              />
-                            </PopoverContent>
-                          </Popover>
+                          <DatePicker
+                            value={recurrenceEdit.endDate}
+                            onChange={(date) => {
+                              if (date) {
+                                setRecurrenceEdit((prev) => ({
+                                  ...prev,
+                                  endDate: date,
+                                }));
+                              }
+                            }}
+                          />
                         </div>
                         {recurrenceEdit.type === 'weekly' && (
                           <div className="space-y-2 col-span-2">

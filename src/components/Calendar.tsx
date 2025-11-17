@@ -7,15 +7,13 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { fireConfetti } from '@/lib/confetti';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { DatePicker } from '@/components/DatePicker';
 
 const adjustDateForWeekend = (date: Date) => {
   const adjusted = new Date(date);
@@ -84,7 +82,6 @@ export function Calendar({
     completedDates: string[];
     includeWeekends: boolean;
   }>({ enabled: false, type: 'daily', endDate: new Date(), weekDays: [], monthDay: new Date().getDate(), completedDates: [], includeWeekends: true });
-
   // Para visão mensal precisamos preencher a grade começando no domingo da primeira semana que contém o dia 1
   let periodStart: Date;
   let periodEnd: Date;
@@ -757,23 +754,14 @@ export function Calendar({
                   {/* Data */}
                   <div className="space-y-2">
                     <Label>Data</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {format(editData.date, 'dd/MM/yyyy', { locale: ptBR })}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarUI
-                          mode="single"
-                          selected={editData.date}
-                          onSelect={(date) => date && setEditData(prev => ({...prev, date: date}))}
-                          initialFocus
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <DatePicker
+                      value={editData.date}
+                      onChange={(date) => {
+                        if (date) {
+                          setEditData((prev) => ({ ...prev, date }));
+                        }
+                      }}
+                    />
                   </div>
                   
                   {/* Responsável Principal */}
@@ -840,23 +828,14 @@ export function Calendar({
                         </div>
                         <div className="space-y-2">
                           <Label>Até</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(recurrenceEdit.endDate, 'dd/MM/yyyy', { locale: ptBR })}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <CalendarUI
-                                mode="single"
-                                selected={recurrenceEdit.endDate}
-                                onSelect={(date) => date && setRecurrenceEdit(r => ({...r, endDate: date}))}
-                                initialFocus
-                                className="pointer-events-auto"
-                              />
-                            </PopoverContent>
-                          </Popover>
+                          <DatePicker
+                            value={recurrenceEdit.endDate}
+                            onChange={(date) => {
+                              if (date) {
+                                setRecurrenceEdit((prev) => ({ ...prev, endDate: date }));
+                              }
+                            }}
+                          />
                         </div>
                         {recurrenceEdit.type === 'weekly' && (
                           <div className="space-y-2 col-span-2">
