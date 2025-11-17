@@ -497,6 +497,8 @@ export function ActivityManager({
     });
   }, [users]);
 
+  const normalizedSearch = searchTerm.toLowerCase();
+
   const filteredActivities = activities.filter((activity) => {
     const matchesUserFilter =
       resolvedVisibleUserIds.length === 0
@@ -504,9 +506,10 @@ export function ActivityManager({
         : resolvedVisibleUserIds.includes(activity.assignedTo);
     if (!matchesUserFilter) return false;
 
+    const descriptionText = activity.description?.toLowerCase() || "";
     const matchesSearch =
-      activity.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      activity.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      activity.title.toLowerCase().includes(normalizedSearch) ||
+      descriptionText.includes(normalizedSearch);
     const matchesStatus =
       statusFilter === "all" || activity.status === statusFilter;
     const matchesClient =

@@ -73,6 +73,7 @@ export function Calendar({
     clientId: string;
     date: Date;
   }>({ title: '', description: '', status: 'pending', assignedTo: '', clientId: '', date: new Date() });
+  const [editingOccurrenceDate, setEditingOccurrenceDate] = useState<Date | null>(null);
   const [recurrenceEdit, setRecurrenceEdit] = useState<{
     enabled: boolean;
     type: 'daily' | 'weekly' | 'monthly';
@@ -157,17 +158,23 @@ export function Calendar({
   };
 
   // Abrir modal de edição
-  const handleActivityClick = (activity: Activity) => {
+  const handleActivityClick = (activity: Activity, occurrenceDate?: Date) => {
+    const meta = parseRecurrence(activity);
+    const occurrenceDateKey = occurrenceDate ? format(occurrenceDate, 'yyyy-MM-dd') : null;
+    const isOccurrenceCompleted = !!(occurrenceDateKey && meta.completedDates?.includes(occurrenceDateKey));
+    const initialStatus =
+      activity.isRecurring && isOccurrenceCompleted ? 'completed' : activity.status;
+
     setEditingActivity(activity);
+    setEditingOccurrenceDate(occurrenceDate ? new Date(occurrenceDate) : null);
     setEditData({
       title: activity.title,
       description: activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '',
-      status: activity.status,
+      status: initialStatus,
       assignedTo: activity.assignedTo,
       clientId: activity.clientId,
       date: new Date(activity.date),
     });
-    const meta = parseRecurrence(activity);
     setRecurrenceEdit({
       enabled: !!(activity.isRecurring || meta.type),
       type: (activity.recurrenceType || meta.type || 'daily') as 'daily' | 'weekly' | 'monthly',
@@ -183,14 +190,33 @@ export function Calendar({
   const handleSaveEdit = () => {
     if (!editingActivity || !onUpdateActivity) return;
     
+    const occurrenceDate = editingOccurrenceDate ? new Date(editingOccurrenceDate) : null;
+    const occurrenceDateKey = occurrenceDate ? format(occurrenceDate, 'yyyy-MM-dd') : null;
+    let updatedCompletedDates = [...(recurrenceEdit.completedDates || [])];
+    let addedOccurrenceCompletion = false;
+
     // construir metadados de recorrência se habilitado
     let recurrenceBlock = '';
+    if (recurrenceEdit.enabled && editingActivity.isRecurring && occurrenceDateKey) {
+      const existingIndex = updatedCompletedDates.indexOf(occurrenceDateKey);
+      if (editData.status === 'completed') {
+        if (existingIndex === -1) {
+          updatedCompletedDates.push(occurrenceDateKey);
+          addedOccurrenceCompletion = true;
+        }
+      } else if (existingIndex !== -1) {
+        updatedCompletedDates.splice(existingIndex, 1);
+      }
+    }
+
+    const normalizedCompletedDates = Array.from(new Set(updatedCompletedDates));
+
     if (recurrenceEdit.enabled) {
       const meta: any = {
         type: recurrenceEdit.type,
         endDate: format(recurrenceEdit.endDate, 'yyyy-MM-dd'),
         weekDays: recurrenceEdit.type === 'weekly' ? recurrenceEdit.weekDays : undefined,
-        completedDates: recurrenceEdit.completedDates,
+        completedDates: normalizedCompletedDates,
         includeWeekends: recurrenceEdit.type === 'daily' ? recurrenceEdit.includeWeekends : undefined,
         monthDays: recurrenceEdit.type === 'monthly' ? [recurrenceEdit.monthDay] : undefined,
       };
@@ -209,12 +235,17 @@ export function Calendar({
         const canChange = weekDays.includes(todayWeekday);
         if (!canChange) finalStatus = editingActivity.status; // mantém
       }
+
+      if (editingActivity.isRecurring && occurrenceDateKey && editData.status === 'completed') {
+        // Manter status base pendente para recorrências ao concluir apenas a ocorrência selecionada
+        finalStatus = 'pending';
+      }
     }
     
     // 🎉 Disparar confetes se status mudou para 'completed'
     const wasCompleted = editingActivity.status === 'completed';
     const isNowCompleted = finalStatus === 'completed';
-    if (!wasCompleted && isNowCompleted) {
+    if ((!wasCompleted && isNowCompleted) || addedOccurrenceCompletion) {
       fireConfetti();
     }
     
@@ -230,6 +261,7 @@ export function Calendar({
     });
     
     setEditingActivity(null);
+    setEditingOccurrenceDate(null);
   };
 
   const handleDeleteActivity = () => {
@@ -238,6 +270,7 @@ export function Calendar({
     if (!shouldDelete) return;
     onDeleteActivity(editingActivity.id);
     setEditingActivity(null);
+    setEditingOccurrenceDate(null);
   };
 
   const getBaseActivitiesForDay = (day: Date) => {
@@ -606,7 +639,7 @@ export function Calendar({
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => { 
                           e.stopPropagation(); 
-                          handleActivityClick(activity);
+                          handleActivityClick(activity, day);
                         }}
                         draggable={!activity.isRecurring}
                         onDragStart={(e) => {
@@ -700,7 +733,15 @@ export function Calendar({
       </div>
 
       {/* Edit Activity Dialog */}
-      <Dialog open={!!editingActivity} onOpenChange={() => setEditingActivity(null)}>
+      <Dialog
+        open={!!editingActivity}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingActivity(null);
+            setEditingOccurrenceDate(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="px-6 pt-6 pb-0">
             <DialogTitle>Editar Atividade</DialogTitle>
