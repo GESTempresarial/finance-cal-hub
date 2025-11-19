@@ -82,7 +82,20 @@ export function Calendar({
     monthDay: number;
     completedDates: string[];
     includeWeekends: boolean;
-  }>({ enabled: false, type: 'daily', endDate: new Date(), weekDays: [], monthDay: new Date().getDate(), completedDates: [], includeWeekends: true });
+    occurrenceDescriptions: Record<string, string>;
+  }>({
+    enabled: false,
+    type: 'daily',
+    endDate: new Date(),
+    weekDays: [],
+    monthDay: new Date().getDate(),
+    completedDates: [],
+    includeWeekends: true,
+    occurrenceDescriptions: {},
+  });
+  const [descriptionScope, setDescriptionScope] = useState<'all' | 'occurrence'>('all');
+  const [occurrenceDescription, setOccurrenceDescription] = useState('');
+  const [occurrenceDescriptionDirty, setOccurrenceDescriptionDirty] = useState(false);
   // Para visão mensal precisamos preencher a grade começando no domingo da primeira semana que contém o dia 1
   let periodStart: Date;
   let periodEnd: Date;
@@ -102,8 +115,8 @@ export function Calendar({
   }
 
   // Lê metadados de recorrência embutidos na descrição
-  const parseRecurrence = (activity: Activity): { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean } => {
-    const result: { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean } = {};
+  const parseRecurrence = (activity: Activity): { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean, occurrenceDescriptions?: Record<string, string> } => {
+    const result: { type?: 'daily'|'weekly'|'monthly'; endDate?: Date; weekDays?: number[], monthDays?: number[], completedDates?: string[], includeWeekends?: boolean, occurrenceDescriptions?: Record<string, string> } = {};
     if (!activity.description) return result;
     const match = activity.description.match(/<recurrence>(.*?)<\/recurrence>/);
     if (!match) return result;
@@ -118,6 +131,9 @@ export function Calendar({
       if (Array.isArray(meta.monthDays)) result.monthDays = meta.monthDays as number[];
       if (Array.isArray(meta.completedDates)) result.completedDates = meta.completedDates as string[];
       if (typeof meta.includeWeekends === 'boolean') result.includeWeekends = meta.includeWeekends;
+      if (meta.occurrenceDescriptions && typeof meta.occurrenceDescriptions === 'object') {
+        result.occurrenceDescriptions = meta.occurrenceDescriptions as Record<string, string>;
+      }
     } catch {}
     return result;
   };
@@ -164,12 +180,16 @@ export function Calendar({
     const isOccurrenceCompleted = !!(occurrenceDateKey && meta.completedDates?.includes(occurrenceDateKey));
     const initialStatus =
       activity.isRecurring && isOccurrenceCompleted ? 'completed' : activity.status;
+    const baseDescription = activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '';
+    const occurrenceCustomDescription = occurrenceDateKey
+      ? meta.occurrenceDescriptions?.[occurrenceDateKey]
+      : undefined;
 
     setEditingActivity(activity);
     setEditingOccurrenceDate(occurrenceDate ? new Date(occurrenceDate) : null);
     setEditData({
       title: activity.title,
-      description: activity.description?.replace(/\n?<recurrence>(.*?)<\/recurrence>/, '').trim() || '',
+      description: baseDescription,
       status: initialStatus,
       assignedTo: activity.assignedTo,
       clientId: activity.clientId,
@@ -183,7 +203,31 @@ export function Calendar({
       monthDay: meta.monthDays?.[0] || new Date(activity.date).getDate(),
       completedDates: meta.completedDates || [],
       includeWeekends: (meta as any).includeWeekends !== false,
+      occurrenceDescriptions: meta.occurrenceDescriptions || {},
     });
+    setOccurrenceDescription(occurrenceCustomDescription ?? baseDescription);
+    setOccurrenceDescriptionDirty(!!occurrenceCustomDescription);
+    setDescriptionScope(occurrenceDateKey ? 'occurrence' : 'all');
+  };
+
+  const handleDescriptionScopeChange = (scope: 'all' | 'occurrence') => {
+    if (scope === descriptionScope) return;
+    if (scope === 'occurrence') {
+      if (!editingActivity?.isRecurring || !editingOccurrenceDate) {
+        setDescriptionScope('all');
+        return;
+      }
+      const occurrenceDateKey = format(editingOccurrenceDate, 'yyyy-MM-dd');
+      const savedDescription = recurrenceEdit.occurrenceDescriptions?.[occurrenceDateKey];
+      if (savedDescription) {
+        setOccurrenceDescription(savedDescription);
+        setOccurrenceDescriptionDirty(true);
+      } else if (!occurrenceDescriptionDirty) {
+        setOccurrenceDescription(editData.description || '');
+        setOccurrenceDescriptionDirty(false);
+      }
+    }
+    setDescriptionScope(scope);
   };
 
   // Salvar edição
@@ -193,6 +237,7 @@ export function Calendar({
     const occurrenceDate = editingOccurrenceDate ? new Date(editingOccurrenceDate) : null;
     const occurrenceDateKey = occurrenceDate ? format(occurrenceDate, 'yyyy-MM-dd') : null;
     let updatedCompletedDates = [...(recurrenceEdit.completedDates || [])];
+    let updatedOccurrenceDescriptions = { ...(recurrenceEdit.occurrenceDescriptions || {}) };
     let addedOccurrenceCompletion = false;
 
     // construir metadados de recorrência se habilitado
@@ -208,6 +253,23 @@ export function Calendar({
         updatedCompletedDates.splice(existingIndex, 1);
       }
     }
+    if (editingActivity.isRecurring && occurrenceDateKey) {
+      if (descriptionScope === 'occurrence') {
+        const baseDescription = editData.description?.trim() || '';
+        const currentOccurrenceDescription = occurrenceDescription || '';
+        if ((currentOccurrenceDescription?.trim() || '') === baseDescription) {
+          delete updatedOccurrenceDescriptions[occurrenceDateKey];
+        } else {
+          updatedOccurrenceDescriptions[occurrenceDateKey] = currentOccurrenceDescription;
+        }
+      } else {
+        const baseDescription = editData.description?.trim() || '';
+        const existingOverride = updatedOccurrenceDescriptions[occurrenceDateKey];
+        if (existingOverride && existingOverride.trim() === baseDescription) {
+          delete updatedOccurrenceDescriptions[occurrenceDateKey];
+        }
+      }
+    }
 
     const normalizedCompletedDates = Array.from(new Set(updatedCompletedDates));
 
@@ -219,6 +281,9 @@ export function Calendar({
         completedDates: normalizedCompletedDates,
         includeWeekends: recurrenceEdit.type === 'daily' ? recurrenceEdit.includeWeekends : undefined,
         monthDays: recurrenceEdit.type === 'monthly' ? [recurrenceEdit.monthDay] : undefined,
+        occurrenceDescriptions: Object.keys(updatedOccurrenceDescriptions).length
+          ? updatedOccurrenceDescriptions
+          : undefined,
       };
       recurrenceBlock = `\n<recurrence>${JSON.stringify(meta)}</recurrence>`;
     }
@@ -739,6 +804,9 @@ export function Calendar({
           if (!open) {
             setEditingActivity(null);
             setEditingOccurrenceDate(null);
+            setOccurrenceDescription('');
+            setDescriptionScope('all');
+            setOccurrenceDescriptionDirty(false);
           }
         }}
       >
@@ -763,10 +831,75 @@ export function Calendar({
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>Descrição</Label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <Label>Descrição</Label>
+                      {editingActivity?.isRecurring && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>Aplicar para:</span>
+                          <div className="inline-flex rounded-md border overflow-hidden">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={descriptionScope === 'all' ? 'default' : 'ghost'}
+                              className="rounded-none"
+                              onClick={() => handleDescriptionScopeChange('all')}
+                            >
+                              Recorrência inteira
+                            </Button>
+                            {editingOccurrenceDate && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={descriptionScope === 'occurrence' ? 'default' : 'ghost'}
+                                className="rounded-none"
+                                onClick={() => handleDescriptionScopeChange('occurrence')}
+                              >
+                                Dia {format(editingOccurrenceDate, 'dd/MM')}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {descriptionScope === 'occurrence' && editingActivity?.isRecurring && editingOccurrenceDate && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>
+                          Personalizando apenas o dia {format(editingOccurrenceDate, 'dd/MM/yyyy')}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2"
+                          onClick={() => {
+                            setOccurrenceDescription(editData.description || '');
+                            setOccurrenceDescriptionDirty(false);
+                          }}
+                        >
+                          Usar descrição padrão
+                        </Button>
+                      </div>
+                    )}
                     <RichTextEditor
-                      content={editData.description}
-                      onChange={(html) => setEditData(prev => ({...prev, description: html}))}
+                      content={
+                        descriptionScope === 'occurrence' &&
+                        editingActivity?.isRecurring &&
+                        editingOccurrenceDate
+                          ? occurrenceDescription
+                          : editData.description
+                      }
+                      onChange={(html) => {
+                        if (
+                          descriptionScope === 'occurrence' &&
+                          editingActivity?.isRecurring &&
+                          editingOccurrenceDate
+                        ) {
+                          setOccurrenceDescription(html);
+                          setOccurrenceDescriptionDirty(true);
+                        } else {
+                          setEditData((prev) => ({ ...prev, description: html }));
+                        }
+                      }}
                       placeholder="Descreva a atividade com detalhes, checklists, listas..."
                     />
                   </div>

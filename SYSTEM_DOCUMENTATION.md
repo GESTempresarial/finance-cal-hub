@@ -124,11 +124,14 @@ Permite criar tarefas que se repetem:
   "endDate": "2025-12-31",
   "weekDays": [1,3,5],
   "completedDates": ["2025-10-30", "2025-10-31"],
-  "includeWeekends": false
+  "includeWeekends": false,
+  "occurrenceDescriptions": {
+    "2025-10-30": "<p>Somente este dia terá esta descrição</p>"
+  }
 }
 ```
 - Armazenados no campo `description` entre tags `<recurrence></recurrence>`
-- Permite rastrear quais ocorrências foram concluídas
+- Permite rastrear quais ocorrências foram concluídas e customizar as descrições por ocorrência
 
 ---
 

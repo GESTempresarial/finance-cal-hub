@@ -528,6 +528,7 @@ export function ActivityManager({
     monthDays?: number[];
     completedDates?: string[];
     includeWeekends?: boolean;
+    occurrenceDescriptions?: Record<string, string>;
   } => {
     const result: {
       type?: "daily" | "weekly" | "monthly";
@@ -536,6 +537,7 @@ export function ActivityManager({
       monthDays?: number[];
       completedDates?: string[];
       includeWeekends?: boolean;
+      occurrenceDescriptions?: Record<string, string>;
     } = {};
     if (!activity.description) return result;
     const match = activity.description.match(/<recurrence>(.*?)<\/recurrence>/);
@@ -556,6 +558,9 @@ export function ActivityManager({
         result.completedDates = meta.completedDates as string[];
       if (typeof meta.includeWeekends === "boolean")
         result.includeWeekends = meta.includeWeekends;
+      if (meta.occurrenceDescriptions && typeof meta.occurrenceDescriptions === "object") {
+        result.occurrenceDescriptions = meta.occurrenceDescriptions as Record<string, string>;
+      }
     } catch {}
     return result;
   };
@@ -690,6 +695,7 @@ export function ActivityManager({
     monthDay: number;
     completedDates: string[];
     includeWeekends: boolean;
+    occurrenceDescriptions: Record<string, string>;
   }>({
     enabled: false,
     type: "daily",
@@ -698,6 +704,7 @@ export function ActivityManager({
     monthDay: new Date().getDate(),
     completedDates: [],
     includeWeekends: true,
+    occurrenceDescriptions: {},
   });
   useEffect(() => {
     if (selectedActivity) {
@@ -724,6 +731,7 @@ export function ActivityManager({
         monthDay: meta.monthDays?.[0] || new Date(selectedActivity.date).getDate(),
         completedDates: meta.completedDates || [],
         includeWeekends: (meta as any).includeWeekends !== false,
+        occurrenceDescriptions: meta.occurrenceDescriptions || {},
       });
     }
   }, [selectedActivity]);
@@ -821,6 +829,9 @@ export function ActivityManager({
         includeWeekends: recurrenceEdit.type === "daily" ? recurrenceEdit.includeWeekends : undefined,
         monthDays: recurrenceEdit.type === "monthly" ? [recurrenceEdit.monthDay] : undefined,
         completedDates: recurrenceEdit.completedDates || [],
+        occurrenceDescriptions: Object.keys(recurrenceEdit.occurrenceDescriptions || {}).length
+          ? recurrenceEdit.occurrenceDescriptions
+          : undefined,
       };
       // Remover metadados antigos e adicionar novos
       const cleanDesc = finalDescription.replace(/\n?<recurrence>(.*?)<\/recurrence>/, "").trim();
