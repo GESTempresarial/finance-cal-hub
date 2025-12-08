@@ -178,6 +178,7 @@ export function MainLayout({ users, onLogout, onCreateUser, onUpdateUser, activi
                 onDeleteActivity={deleteActivity}
                 onActivityClick={handleCalendarActivityClick}
                 onDayCreate={handleDayCreate}
+                currentUserName={companyName}
               />
             </TabsContent>
 

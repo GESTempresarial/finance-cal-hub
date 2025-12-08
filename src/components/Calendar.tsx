@@ -1,7 +1,7 @@
 import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Client, STATUS_LABELS, User } from '@/types';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Target } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, startOfWeek, endOfWeek, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,7 @@ interface CalendarProps {
   onUpdateActivity?: (id: string, updates: Partial<Activity>) => void;
   onDeleteActivity?: (id: string) => void;
   onDayCreate?: (date: Date) => void;
+  currentUserName?: string | null;
 }
 
 export function Calendar({ 
@@ -55,6 +56,7 @@ export function Calendar({
   onUpdateActivity,
   onDeleteActivity,
   onDayCreate,
+  currentUserName,
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('week');
@@ -533,10 +535,24 @@ export function Calendar({
             </div>
           </div>
           
-          <Button onClick={onCreateActivity} className="gap-2 w-full lg:w-auto order-3" size="sm">
-            <Plus className="h-4 w-4" />
-            <span className="sm:inline">Nova Atividade</span>
-          </Button>
+          <div className="flex gap-2 w-full lg:w-auto order-3">
+            <Button onClick={onCreateActivity} className="gap-2 flex-1 lg:flex-none" size="sm">
+              <Plus className="h-4 w-4" />
+              <span className="sm:inline">Nova Atividade</span>
+            </Button>
+
+            {currentUserName === 'GEST Empresarial' && (
+              <Button 
+                onClick={() => window.open('https://planejamentogest.vercel.app/', '_blank')}
+                className="gap-2 flex-1 lg:flex-none"
+                size="sm"
+                variant="outline"
+              >
+                <Target className="h-4 w-4" />
+                <span className="sm:inline">Planejamento</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
